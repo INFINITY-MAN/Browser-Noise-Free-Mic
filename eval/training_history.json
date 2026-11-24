@@ -1,0 +1,52 @@
+{
+  "dataset": "JacobLinCool/VoiceBank-DEMAND-16k",
+  "train_clips": 11572,
+  "test_clips": 824,
+  "crop_samples": 32000,
+  "batch_size": 16,
+  "device": "cuda",
+  "perceptron": [
+    {
+      "epoch": 1,
+      "lr": 1e-05,
+      "train_loss": -1.6042080484073027,
+      "train_si_sdr_db": 10.995998465009086,
+      "val_loss": -2.989319346347842,
+      "val_si_sdr_db": 16.94943716543392,
+      "val_si_sdr_gain_db": 8.50390080065982,
+      "epoch_sec": 58.41877794265747
+    }
+  ],
+  "gtcrn": [
+    {
+      "epoch": 1,
+      "lr": 0.0015025,
+      "train_loss": -1.471192695209138,
+      "train_si_sdr_db": 10.164570592457164,
+      "val_loss": -3.094163792840775,
+      "val_si_sdr_db": 17.424682960058878,
+      "val_si_sdr_gain_db": 8.97914658862989,
+      "epoch_sec": 62.76177096366882
+    },
+    {
+      "epoch": 2,
+      "lr": 0.0005075000000000002,
+      "train_loss": -1.9105828091976225,
+      "train_si_sdr_db": 11.972484579389686,
+      "val_loss": -3.212615873519946,
+      "val_si_sdr_db": 17.841336778211364,
+      "val_si_sdr_gain_db": 9.395800420960176,
+      "epoch_sec": 61.637104511260986
+    },
+    {
+      "epoch": 3,
+      "lr": 1e-05,
+      "train_loss": -2.0217116670489808,
+      "train_si_sdr_db": 12.421665409953432,
+      "val_loss": -3.248668105011462,
+      "val_si_sdr_db": 17.938486621507163,
+      "val_si_sdr_gain_db": 9.492950258903132,
+      "epoch_sec": 61.14255952835083
+    }
+  ]
+}

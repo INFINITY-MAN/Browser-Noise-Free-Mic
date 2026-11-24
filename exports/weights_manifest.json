@@ -1,0 +1,58 @@
+{
+  "files": [
+    {
+      "path": "checkpoints/gtcrn_best.pt",
+      "bytes": 380031,
+      "sha256": "925d8a629754717db6a463271ee4ce469e912e13a2a17d72018015633982167d"
+    },
+    {
+      "path": "checkpoints/perceptron_best.pt",
+      "bytes": 533229,
+      "sha256": "54e278f0523cd0d8a6b4bd4dd9d92eb49daf704f403fd4e15f366d06a2e4c7e0"
+    },
+    {
+      "path": "exports/gtcrn_fp32.onnx",
+      "bytes": 377132,
+      "sha256": "b651e57c7fd261368f54e43a8a85dbec0fedbf858a585577533cbd2a0d66c2f9"
+    },
+    {
+      "path": "exports/gtcrn_int8.onnx",
+      "bytes": 327536,
+      "sha256": "cd4663142eacff2c61ae7d32ab0e8659c773539a6edda83a65a7ecdddbcb6fa5"
+    },
+    {
+      "path": "exports/gtcrn_stream_fp32.onnx",
+      "bytes": 364558,
+      "sha256": "06c840592ec867e4a0fee54ad27585c18c257cecabf90eea06faf51f03b52289"
+    },
+    {
+      "path": "exports/gtcrn_stream_int8.onnx",
+      "bytes": 306925,
+      "sha256": "bda516d965fa6c8a2739eec2bcf24e88eed0701e10398ffcddc1a36078a528ec"
+    },
+    {
+      "path": "web/models/gtcrn_fp32.onnx",
+      "bytes": 377132,
+      "sha256": "b651e57c7fd261368f54e43a8a85dbec0fedbf858a585577533cbd2a0d66c2f9"
+    },
+    {
+      "path": "web/models/gtcrn_int8.onnx",
+      "bytes": 327536,
+      "sha256": "cd4663142eacff2c61ae7d32ab0e8659c773539a6edda83a65a7ecdddbcb6fa5"
+    },
+    {
+      "path": "web/models/gtcrn_stream_fp32.onnx",
+      "bytes": 364558,
+      "sha256": "06c840592ec867e4a0fee54ad27585c18c257cecabf90eea06faf51f03b52289"
+    },
+    {
+      "path": "web/models/gtcrn_stream_int8.onnx",
+      "bytes": 306925,
+      "sha256": "bda516d965fa6c8a2739eec2bcf24e88eed0701e10398ffcddc1a36078a528ec"
+    }
+  ],
+  "parity_verification": {
+    "batch_fp32_max_abs_diff": 3.0994415283203125e-06,
+    "stream_100f_fp32_max_abs_diff": 3.4570693969726562e-06
+  }
+}

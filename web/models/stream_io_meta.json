@@ -1,0 +1,312 @@
+{
+  "inputs": [
+    {
+      "name": "frame_spec",
+      "shape": [
+        1,
+        2,
+        257,
+        1
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "enc_cache_0",
+      "shape": [
+        1,
+        2,
+        257,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "enc_cache_1",
+      "shape": [
+        1,
+        16,
+        129,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "enc_cache_2",
+      "shape": [
+        1,
+        24,
+        65,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "enc_cache_3",
+      "shape": [
+        1,
+        32,
+        33,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "dec_cache_0",
+      "shape": [
+        1,
+        32,
+        17,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "dec_cache_1",
+      "shape": [
+        1,
+        32,
+        33,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "dec_cache_2",
+      "shape": [
+        1,
+        24,
+        65,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "dec_cache_3",
+      "shape": [
+        1,
+        16,
+        129,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "gru_h_in",
+      "shape": [
+        4,
+        2,
+        1,
+        34
+      ],
+      "dtype": "float32"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "enh_real",
+      "shape": [
+        1,
+        1,
+        257,
+        1
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "enh_imag",
+      "shape": [
+        1,
+        1,
+        257,
+        1
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "enc_cache_out_0",
+      "shape": [
+        1,
+        2,
+        257,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "enc_cache_out_1",
+      "shape": [
+        1,
+        16,
+        129,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "enc_cache_out_2",
+      "shape": [
+        1,
+        24,
+        65,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "enc_cache_out_3",
+      "shape": [
+        1,
+        32,
+        33,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "dec_cache_out_0",
+      "shape": [
+        1,
+        32,
+        17,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "dec_cache_out_1",
+      "shape": [
+        1,
+        32,
+        33,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "dec_cache_out_2",
+      "shape": [
+        1,
+        24,
+        65,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "dec_cache_out_3",
+      "shape": [
+        1,
+        16,
+        129,
+        2
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "gru_h_out",
+      "shape": [
+        4,
+        2,
+        1,
+        34
+      ],
+      "dtype": "float32"
+    }
+  ],
+  "state_pairs": [
+    {
+      "in": "enc_cache_0",
+      "out": "enc_cache_out_0",
+      "shape": [
+        1,
+        2,
+        257,
+        2
+      ]
+    },
+    {
+      "in": "enc_cache_1",
+      "out": "enc_cache_out_1",
+      "shape": [
+        1,
+        16,
+        129,
+        2
+      ]
+    },
+    {
+      "in": "enc_cache_2",
+      "out": "enc_cache_out_2",
+      "shape": [
+        1,
+        24,
+        65,
+        2
+      ]
+    },
+    {
+      "in": "enc_cache_3",
+      "out": "enc_cache_out_3",
+      "shape": [
+        1,
+        32,
+        33,
+        2
+      ]
+    },
+    {
+      "in": "dec_cache_0",
+      "out": "dec_cache_out_0",
+      "shape": [
+        1,
+        32,
+        17,
+        2
+      ]
+    },
+    {
+      "in": "dec_cache_1",
+      "out": "dec_cache_out_1",
+      "shape": [
+        1,
+        32,
+        33,
+        2
+      ]
+    },
+    {
+      "in": "dec_cache_2",
+      "out": "dec_cache_out_2",
+      "shape": [
+        1,
+        24,
+        65,
+        2
+      ]
+    },
+    {
+      "in": "dec_cache_3",
+      "out": "dec_cache_out_3",
+      "shape": [
+        1,
+        16,
+        129,
+        2
+      ]
+    },
+    {
+      "in": "gru_h_in",
+      "out": "gru_h_out",
+      "shape": [
+        4,
+        2,
+        1,
+        34
+      ]
+    }
+  ],
+  "sample_rate": 16000,
+  "n_fft": 512,
+  "hop_length": 256,
+  "win_length": 512
+}
