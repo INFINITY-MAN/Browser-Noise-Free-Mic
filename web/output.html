@@ -161,6 +161,26 @@
         <button id="btn-refresh-devices" class="btn btn-sm" type="button">Refresh Devices</button>
       </div>
 
+      <div id="vc-install-bar" class="notice-strip" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;">
+        <div style="flex:1 1 260px;">
+          <strong id="vc-status-title">Virtual Cable Not Detected</strong>
+          <span id="vc-status-desc" style="display:block; margin-top:2px; opacity:0.85;">
+            Install VB-Audio Virtual Cable (free) to route clean audio into Meet, Zoom, Discord, or OBS.
+          </span>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+          <a id="btn-install-vbcable" href="./install_virtual_cable.bat" download="install_virtual_cable.bat" class="btn btn-primary" style="text-decoration:none;">
+            1-Click Install Virtual Cable (Windows)
+          </a>
+          <button id="btn-copy-vbcable-ps" class="btn" type="button" title="Copy one-line PowerShell installer command">
+            Copy PowerShell Cmd
+          </button>
+          <button id="btn-refresh-devices" class="btn" type="button" title="Re-scan audio devices after installing Virtual Cable">
+            Refresh Devices
+          </button>
+        </div>
+      </div>
+
       <div class="notice-strip">
         <strong>Headphone &amp; VB-Cable Routing Notice:</strong> Always wear headphones or select
         <span class="mono">CABLE Input (VB-Audio Virtual Cable)</span> as your output device above, then pick
@@ -854,6 +874,21 @@
           if (/CABLE Input/i.test(d.label)) opt.selected = true;
           selectOut.appendChild(opt);
         });
+        const hasVC = outs.some((d) => /cable input|vb-audio|blackhole|virtual/i.test(d.label || ''));
+        const vcTitle = document.getElementById('vc-status-title');
+        const vcDesc = document.getElementById('vc-status-desc');
+        const btnInstallVC = document.getElementById('btn-install-vbcable');
+        if (vcTitle && vcDesc) {
+          if (hasVC) {
+            vcTitle.textContent = 'Virtual Cable Ready';
+            vcDesc.textContent = 'VB-Audio Virtual Cable detected. Select CABLE Input above and pick CABLE Output as your mic in Meet/Zoom/Discord.';
+            if (btnInstallVC) btnInstallVC.classList.remove('btn-primary');
+          } else {
+            vcTitle.textContent = 'Virtual Cable Not Detected';
+            vcDesc.textContent = 'Download and double-click the 1-Click Windows installer, then click Refresh Devices (or reboot if prompted).';
+            if (btnInstallVC) btnInstallVC.classList.add('btn-primary');
+          }
+        }
       } catch {}
     }
 
@@ -995,6 +1030,28 @@
       }
       showToast(isVC ? 'Routing live audio to Virtual Cable (no echo).' : 'Output updated (self-monitor muted to prevent echo).');
     });
+
+    // One-Click Virtual Cable PowerShell Copy & Device Refresh
+    const btnCopyVcPs = document.getElementById('btn-copy-vbcable-ps');
+    if (btnCopyVcPs) {
+      btnCopyVcPs.addEventListener('click', async () => {
+        const psCmd = "$w=\"$env:TEMP\\BNFM_VC\"; md $w -Force|Out-Null; $z=\"$w\\vc.zip\"; iwr 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack46.zip' -OutFile $z; Expand-Archive $z $w -Force; Start-Process \"$w\\VBCABLE_Setup_x64.exe\" -ArgumentList '-i','-h' -Verb RunAs";
+        try {
+          await navigator.clipboard.writeText(psCmd);
+          showToast('Copied PowerShell installer command. Paste into PowerShell (Admin).');
+        } catch {
+          prompt('Copy and paste this into PowerShell (Run as Administrator):', psCmd);
+        }
+      });
+    }
+
+    const btnRefreshDevices = document.getElementById('btn-refresh-devices');
+    if (btnRefreshDevices) {
+      btnRefreshDevices.addEventListener('click', async () => {
+        await populateDevices();
+        showToast('Audio device list refreshed.');
+      });
+    }
 
     // 2s Room Snapshot (Loop A immediate lock)
     btnRoomSnapshot.addEventListener('click', async () => {
