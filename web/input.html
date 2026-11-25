@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browser Noise Free Mic — Capture &amp; Intake</title>
+  <meta name="theme-color" content="#0A0A0A" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script>
+    (function () {
+      const saved = localStorage.getItem('bnfm_theme');
+      if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="input.html" class="brand" aria-label="Browser Noise Free Mic Home">
+        <span>Browser Noise Free Mic</span>
+        <span class="brand-dot" aria-hidden="true"></span>
+        <span class="brand-sub">V2</span>
+      </a>
+
+      <div class="topbar-controls">
+        <button id="btn-install-app" class="btn btn-sm btn-ghost hidden" type="button">Install App</button>
+
+        <label class="switch-control" title="Show advanced telemetry drawer in Studio">
+          <input id="toggle-nerds" type="checkbox" />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span>Stats for Nerds</span>
+        </label>
+
+        <button id="btn-theme" class="theme-toggle" type="button" aria-label="Toggle Light and Dark Theme">
+          <span class="theme-swatch" aria-hidden="true"></span>
+          <span id="theme-label">Light</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <div class="hero-center">
+      <section class="hero-header">
+        <div class="eyebrow">48 kHz Full-Band Neural Voice Engine</div>
+        <h1 class="hero-title">Studio-grade voice isolation, locally in your browser.</h1>
+        <p class="hero-subtitle">Record a clean take, drop any audio clip, or route a live virtual microphone to your call app.</p>
+        <div style="margin-top:16px;padding:14px 18px;border:1px solid var(--border);border-radius:8px;background:var(--surface);max-width:720px;font-size:13.5px;line-height:1.55;color:var(--text-secondary);">
+          <strong style="color:var(--text-primary);font-weight:600;">Browser Noise Free Mic</strong> eliminates ceiling fans, AC mains hum, street noise, and room echo at full <span class="mono" style="color:var(--accent);">48 kHz</span> studio quality directly on your local GPU (<span class="mono">WebGPU / WASM</span>) — zero audio uploaded. Export studio-mastered WAV or AAC files, or route a live noise-free mic straight into Google Meet, Zoom, and Discord.
+        </div>
+      </section>
+
+      <section class="action-grid" aria-label="Primary Audio Inputs">
+        <!-- Action 1: Record Voice -->
+        <article id="card-record" class="action-card">
+          <div>
+            <div class="card-index">
+              <span>01 / CAPTURE</span>
+              <span id="rec-badge" class="rec-indicator hidden">
+                <span class="rec-dot"></span>
+                <span id="rec-timer">00:00</span>
+              </span>
+            </div>
+            <h2 class="card-title">Record Voice</h2>
+            <p class="card-desc">Unprocessed 48 kHz microphone capture with browser DSP bypassed.</p>
+          </div>
+
+          <div class="live-meter-wrap" aria-hidden="true">
+            <canvas id="live-wave-canvas" class="live-meter-canvas" width="280" height="28"></canvas>
+          </div>
+
+          <button id="btn-record" class="btn btn-accent btn-lg" type="button">Record Voice</button>
+        </article>
+
+        <!-- Action 2: Drop Audio File -->
+        <article id="drop-zone" class="action-card">
+          <div>
+            <div class="card-index">
+              <span>02 / IMPORT</span>
+              <span class="mono">48 KHZ PREP</span>
+            </div>
+            <h2 class="card-title">Drop Audio File</h2>
+            <p class="card-desc">Enhance recordings, voice memos, or podcast clips on-device.</p>
+          </div>
+
+          <div id="drop-zone-trigger" class="drop-zone-box" role="button" tabindex="0" aria-label="Drop or select an audio file">
+            <div style="font-size:13px;font-weight:500;">Drop file here or click to browse</div>
+            <div class="drop-zone-formats">.aac · .m4a · .wav · .mp3 · .ogg</div>
+          </div>
+
+          <input
+            id="file-input"
+            class="sr-only"
+            type="file"
+            accept=".aac,.m4a,.wav,.mp3,.ogg,audio/aac,audio/mp4"
+          />
+
+          <button id="btn-browse" class="btn btn-lg" type="button">Select Audio File</button>
+        </article>
+
+        <!-- Action 3: Live Virtual Mic -->
+        <article class="action-card">
+          <div>
+            <div class="card-index">
+              <span>03 / REAL-TIME</span>
+              <span class="mono">VB-CABLE</span>
+            </div>
+            <h2 class="card-title">Live Virtual Mic</h2>
+            <p class="card-desc">Continuous low-latency neural mic routed to VB-Audio Virtual Cable.</p>
+          </div>
+
+          <div class="live-meter-wrap" style="justify-content:space-between;">
+            <span class="mono" style="font-size:11px;color:var(--text-muted);">MIC &rarr; 48 kHz AI &rarr; CABLE</span>
+            <span class="brand-dot"></span>
+          </div>
+
+          <button id="btn-continuous" class="btn btn-solid btn-lg" type="button">Live Virtual Mic</button>
+        </article>
+      </section>
+
+      <div class="demo-row">
+        <button id="btn-demo-indian" class="text-trigger" type="button">
+          <span>Try Indian Household Demo (50 Hz Hum + Fan)</span>
+          <span class="mono" aria-hidden="true">&rarr;</span>
+        </button>
+        <span class="spec-footnote">DeepFilterNet3 48 kHz · Local IndexedDB · Zero Cloud Upload</span>
+      </div>
+
+      <!-- Compact Local Recent Takes Strip (hidden when empty) -->
+      <section id="recent-takes-section" class="recent-strip hidden" aria-label="Recent Local Takes">
+        <div class="recent-header">
+          <span class="section-label">Recent Takes (Local Storage)</span>
+          <span id="recent-count" class="mono" style="font-size:11px;color:var(--text-muted);">0 / 5</span>
+        </div>
+        <div id="recent-takes-list" class="recent-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module">
+    // Graceful dynamic import of sibling modules (appStore.js & audioEngine.js)
+    const loadModule = async (path) => {
+      try {
+        return await import(path);
+      } catch {
+        return null;
+      }
+    };
+
+    const [storeMod, engineMod] = await Promise.all([
+      loadModule('./appStore.js'),
+      loadModule('./audioEngine.js?v=2.2')
+    ]);
+
+    const externalStore = storeMod?.default || storeMod?.appStore || storeMod || window.BNFMStore || null;
+    const externalEngine = window.BNFMAudioEngine || engineMod?.default || engineMod?.audioEngine || window.AudioEngine || null;
+
+    // ------------------------------------------------------------------
+    // Built-in IndexedDB (BNFM_DB) fallback adapter
+    // ------------------------------------------------------------------
+    const DB_NAME = 'BNFM_DB';
+    const DB_VERSION = 1;
+    const STORE_TAKES = 'takes';
+    const STORE_STATE = 'session';
+
+    function openLocalDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_TAKES)) {
+            db.createObjectStore(STORE_TAKES, { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains(STORE_STATE)) {
+            db.createObjectStore(STORE_STATE, { keyPath: 'key' });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function saveTakeToDB(take) {
+      if (externalStore && typeof externalStore.saveTake === 'function') {
+        try {
+          const res = await externalStore.saveTake(take);
+          if (res) return res;
+        } catch {}
+      }
+      const db = await openLocalDB();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_TAKES, STORE_STATE], 'readwrite');
+        tx.objectStore(STORE_TAKES).put(take);
+        tx.objectStore(STORE_STATE).put({ key: 'activeTakeId', value: take.id });
+        tx.objectStore(STORE_STATE).put({ key: 'mode', value: 'file' });
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      // Trim to most recent 5 takes
+      const all = await getRecentTakesFromDB();
+      if (all.length > 5) {
+        const tx = db.transaction(STORE_TAKES, 'readwrite');
+        all.slice(5).forEach((old) => tx.objectStore(STORE_TAKES).delete(old.id));
+      }
+      return take.id;
+    }
+
+    async function getRecentTakesFromDB() {
+      if (externalStore && typeof externalStore.getRecentTakes === 'function') {
+        try {
+          const items = await externalStore.getRecentTakes(5);
+          if (Array.isArray(items)) return items.slice(0, 5);
+        } catch {}
+      }
+      try {
+        const db = await openLocalDB();
+        return await new Promise((resolve) => {
+          const tx = db.transaction(STORE_TAKES, 'readonly');
+          const req = tx.objectStore(STORE_TAKES).getAll();
+          req.onsuccess = () => {
+            const list = (req.result || []).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            resolve(list.slice(0, 5));
+          };
+          req.onerror = () => resolve([]);
+        });
+      } catch {
+        return [];
+      }
+    }
+
+    async function setSessionMode(mode) {
+      sessionStorage.setItem('bnfm_mode', mode);
+      if (externalStore && typeof externalStore.setMode === 'function') {
+        try { await externalStore.setMode(mode); } catch {}
+      }
+      try {
+        const db = await openLocalDB();
+        await new Promise((resolve) => {
+          const tx = db.transaction(STORE_STATE, 'readwrite');
+          tx.objectStore(STORE_STATE).put({ key: 'mode', value: mode });
+          tx.oncomplete = resolve;
+          tx.onerror = resolve;
+        });
+      } catch {}
+    }
+
+    // ------------------------------------------------------------------
+    // UI Helpers: Theme, Stats for Nerds Switch, PWA Install, Toast
+    // ------------------------------------------------------------------
+    const btnTheme = document.getElementById('btn-theme');
+    const themeLabel = document.getElementById('theme-label');
+    const toggleNerds = document.getElementById('toggle-nerds');
+    const btnInstall = document.getElementById('btn-install-app');
+    const toastEl = document.getElementById('toast');
+
+    let toastTimer = null;
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('is-visible');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('is-visible'), 2600);
+    }
+
+    function syncThemeUI() {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      themeLabel.textContent = isDark ? 'Dark' : 'Light';
+    }
+    syncThemeUI();
+
+    btnTheme.addEventListener('click', () => {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      if (isDark) {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('bnfm_theme', 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('bnfm_theme', 'dark');
+      }
+      syncThemeUI();
+    });
+
+    // Stats for Nerds: OFF by default, persisted in localStorage
+    const savedNerds = localStorage.getItem('bnfm_nerds') === 'true';
+    toggleNerds.checked = savedNerds;
+    toggleNerds.addEventListener('change', () => {
+      localStorage.setItem('bnfm_nerds', toggleNerds.checked ? 'true' : 'false');
+    });
+
+    // PWA Install Prompt
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      btnInstall.classList.remove('hidden');
+    });
+
+    btnInstall.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      btnInstall.classList.add('hidden');
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+
+    // ------------------------------------------------------------------
+    // Action 1: Raw 48 kHz Microphone Capture + Minimal Orange Waveform
+    // ------------------------------------------------------------------
+    const cardRecord = document.getElementById('card-record');
+    const btnRecord = document.getElementById('btn-record');
+    const recBadge = document.getElementById('rec-badge');
+    const recTimer = document.getElementById('rec-timer');
+    const waveCanvas = document.getElementById('live-wave-canvas');
+    const waveCtx = waveCanvas.getContext('2d');
+
+    let isRecording = false;
+    let micStream = null;
+    let recAudioCtx = null;
+    let recProcessor = null;
+    let recAnalyser = null;
+    let recChunks = [];
+    let recStartTime = 0;
+    let recRaf = null;
+
+    function drawIdleMeter() {
+      const w = waveCanvas.width;
+      const h = waveCanvas.height;
+      waveCtx.clearRect(0, 0, w, h);
+      const bars = 40;
+      const gap = 3;
+      const bw = (w - gap * (bars - 1)) / bars;
+      waveCtx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#E5E5E5';
+      for (let i = 0; i < bars; i++) {
+        waveCtx.fillRect(i * (bw + gap), h / 2 - 2, bw, 4);
+      }
+    }
+    drawIdleMeter();
+
+    function drawLiveMeter() {
+      if (!isRecording || !recAnalyser) return;
+      const data = new Uint8Array(recAnalyser.frequencyBinCount);
+      recAnalyser.getByteTimeDomainData(data);
+
+      const w = waveCanvas.width;
+      const h = waveCanvas.height;
+      waveCtx.clearRect(0, 0, w, h);
+
+      const bars = 40;
+      const gap = 3;
+      const bw = (w - gap * (bars - 1)) / bars;
+      const step = Math.floor(data.length / bars);
+      waveCtx.fillStyle = '#FF5A00';
+
+      for (let i = 0; i < bars; i++) {
+        let peak = 0;
+        for (let j = 0; j < step; j++) {
+          const v = Math.abs((data[i * step + j] - 128) / 128);
+          if (v > peak) peak = v;
+        }
+        const bh = Math.max(4, Math.min(h, peak * h * 1.9));
+        waveCtx.fillRect(i * (bw + gap), (h - bh) / 2, bw, bh);
+      }
+
+      const elapsed = Math.floor((Date.now() - recStartTime) / 1000);
+      const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const ss = String(elapsed % 60).padStart(2, '0');
+      recTimer.textContent = `${mm}:${ss}`;
+
+      recRaf = requestAnimationFrame(drawLiveMeter);
+    }
+
+    function mergeFloat32(chunks) {
+      const total = chunks.reduce((acc, c) => acc + c.length, 0);
+      const out = new Float32Array(total);
+      let offset = 0;
+      for (const c of chunks) {
+        out.set(c, offset);
+        offset += c.length;
+      }
+      return out;
+    }
+
+    async function resampleTo48k(samples, srcRate) {
+      if (srcRate === 48000) return samples;
+      const length = Math.ceil((samples.length * 48000) / srcRate);
+      const offline = new OfflineAudioContext(1, length, 48000);
+      const buf = offline.createBuffer(1, samples.length, srcRate);
+      buf.copyToChannel(samples, 0);
+      const src = offline.createBufferSource();
+      src.buffer = buf;
+      src.connect(offline.destination);
+      src.start(0);
+      const rendered = await offline.startRendering();
+      return rendered.getChannelData(0).slice();
+    }
+
+    btnRecord.addEventListener('click', async () => {
+      if (!isRecording) {
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              sampleRate: 48000,
+              channelCount: 1
+            }
+          });
+          recAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+          const source = recAudioCtx.createMediaStreamSource(micStream);
+          recAnalyser = recAudioCtx.createAnalyser();
+          recAnalyser.fftSize = 512;
+
+          recChunks = [];
+          recProcessor = recAudioCtx.createScriptProcessor(4096, 1, 1);
+          recProcessor.onaudioprocess = (ev) => {
+            if (!isRecording) return;
+            recChunks.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
+          };
+
+          source.connect(recAnalyser);
+          source.connect(recProcessor);
+          recProcessor.connect(recAudioCtx.destination);
+
+          isRecording = true;
+          recStartTime = Date.now();
+          cardRecord.classList.add('is-recording');
+          recBadge.classList.remove('hidden');
+          btnRecord.textContent = 'Stop & Enhance';
+          drawLiveMeter();
+        } catch (err) {
+          showToast('Microphone access denied or unavailable.');
+        }
+      } else {
+        isRecording = false;
+        cancelAnimationFrame(recRaf);
+        cardRecord.classList.remove('is-recording');
+        recBadge.classList.add('hidden');
+        btnRecord.disabled = true;
+        btnRecord.textContent = 'Preparing Take...';
+
+        const srcRate = recAudioCtx ? recAudioCtx.sampleRate : 48000;
+        if (recProcessor) recProcessor.disconnect();
+        if (micStream) micStream.getTracks().forEach((t) => t.stop());
+        if (recAudioCtx) await recAudioCtx.close().catch(() => {});
+
+        const merged = mergeFloat32(recChunks);
+        if (merged.length < 4800) {
+          btnRecord.disabled = false;
+          btnRecord.textContent = 'Record Voice';
+          drawIdleMeter();
+          showToast('Recording too short. Speak for at least 0.5 s.');
+          return;
+        }
+
+        const pcm48k = await resampleTo48k(merged, srcRate);
+        const now = new Date();
+        const takeId = `take_${Date.now()}`;
+        const stamp = now.toTimeString().slice(0, 5);
+        await saveTakeToDB({
+          id: takeId,
+          name: `Voice Take ${stamp}`,
+          sourceType: 'record',
+          sampleRate: 48000,
+          duration: pcm48k.length / 48000,
+          createdAt: Date.now(),
+          noisyPcm: pcm48k
+        });
+        window.location.href = `processing.html?mode=file&take=${encodeURIComponent(takeId)}`;
+      }
+    });
+
+    // ------------------------------------------------------------------
+    // Action 2: Drop Audio File (.aac, .m4a, .wav, .mp3, .ogg)
+    // ------------------------------------------------------------------
+    const dropZone = document.getElementById('drop-zone');
+    const dropTrigger = document.getElementById('drop-zone-trigger');
+    const fileInput = document.getElementById('file-input');
+    const btnBrowse = document.getElementById('btn-browse');
+
+    async function handleAudioFile(file) {
+      if (!file) return;
+      showToast(`Decoding ${file.name}...`);
+      try {
+        const arr = await file.arrayBuffer();
+        const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+        const decoded = await ctx.decodeAudioData(arr.slice(0));
+        // Downmix to mono Float32
+        const len = decoded.length;
+        const mono = new Float32Array(len);
+        const chCount = decoded.numberOfChannels;
+        for (let c = 0; c < chCount; c++) {
+          const ch = decoded.getChannelData(c);
+          for (let i = 0; i < len; i++) mono[i] += ch[i] / chCount;
+        }
+        const pcm48k = await resampleTo48k(mono, decoded.sampleRate);
+        await ctx.close().catch(() => {});
+
+        const takeId = `take_${Date.now()}`;
+        await saveTakeToDB({
+          id: takeId,
+          name: file.name,
+          sourceType: 'file',
+          sampleRate: 48000,
+          duration: pcm48k.length / 48000,
+          createdAt: Date.now(),
+          noisyPcm: pcm48k
+        });
+        window.location.href = `processing.html?mode=file&take=${encodeURIComponent(takeId)}`;
+      } catch {
+        showToast('Could not decode audio file. Try WAV, MP3, M4A, AAC, or OGG.');
+      }
+    }
+
+    btnBrowse.addEventListener('click', () => fileInput.click());
+    dropTrigger.addEventListener('click', () => fileInput.click());
+    dropTrigger.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+    fileInput.addEventListener('change', (e) => handleAudioFile(e.target.files?.[0]));
+
+    ['dragenter', 'dragover'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.classList.add('is-dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('is-dragover');
+      });
+    });
+    dropZone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (file) handleAudioFile(file);
+    });
+
+    // ------------------------------------------------------------------
+    // Action 3: Continuous Live Mic -> VB-Cable
+    // ------------------------------------------------------------------
+    document.getElementById('btn-continuous').addEventListener('click', async () => {
+      await setSessionMode('continuous');
+      window.location.href = 'processing.html?mode=continuous';
+    });
+
+    // ------------------------------------------------------------------
+    // Indian Household Demo (50 Hz Hum + Ceiling Fan + Speech Formants)
+    // ------------------------------------------------------------------
+    document.getElementById('btn-demo-indian').addEventListener('click', async () => {
+      showToast('Generating 48 kHz Indian Household Demo...');
+      let pcm48k = null;
+      if (externalEngine && typeof externalEngine.generateIndianDemo === 'function') {
+        try { pcm48k = await externalEngine.generateIndianDemo(); } catch {}
+      }
+      if (!pcm48k) {
+        const sr = 48000;
+        const dur = 5.0;
+        const n = sr * dur;
+        pcm48k = new Float32Array(n);
+        let lp = 0;
+        for (let i = 0; i < n; i++) {
+          const t = i / sr;
+          // 50 Hz Indian mains hum + harmonics
+          const hum = 0.085 * Math.sin(2 * Math.PI * 50 * t)
+                    + 0.040 * Math.sin(2 * Math.PI * 100 * t)
+                    + 0.022 * Math.sin(2 * Math.PI * 150 * t);
+          // Ceiling fan blade pass + broadband air turbulence
+          const white = Math.random() * 2 - 1;
+          lp = lp * 0.92 + white * 0.08;
+          const fanMod = 0.7 + 0.3 * Math.sin(2 * Math.PI * 14.5 * t);
+          const fan = lp * 0.28 * fanMod;
+          // Speech-like syllabic cadence & harmonic formants
+          const syllable = Math.max(0, Math.sin(2 * Math.PI * 2.4 * t)) * (t > 0.4 && t < 4.6 ? 1 : 0);
+          const f0 = 135 + 22 * Math.sin(2 * Math.PI * 0.8 * t);
+          const voice = syllable * (
+            0.34 * Math.sin(2 * Math.PI * f0 * t) +
+            0.22 * Math.sin(2 * Math.PI * f0 * 2 * t) +
+            0.14 * Math.sin(2 * Math.PI * f0 * 3.1 * t) +
+            0.08 * Math.sin(2 * Math.PI * f0 * 5.2 * t)
+          );
+          pcm48k[i] = Math.max(-0.98, Math.min(0.98, voice + hum + fan));
+        }
+      }
+
+      const takeId = `demo_${Date.now()}`;
+      await saveTakeToDB({
+        id: takeId,
+        name: 'Indian Household Demo (50 Hz + Fan)',
+        sourceType: 'demo',
+        sampleRate: 48000,
+        duration: pcm48k.length / 48000,
+        createdAt: Date.now(),
+        noisyPcm: pcm48k
+      });
+      window.location.href = `processing.html?mode=file&take=${encodeURIComponent(takeId)}`;
+    });
+
+    // ------------------------------------------------------------------
+    // Compact Recent Takes Strip (up to 5 from BNFM_DB)
+    // ------------------------------------------------------------------
+    const recentSection = document.getElementById('recent-takes-section');
+    const recentList = document.getElementById('recent-takes-list');
+    const recentCount = document.getElementById('recent-count');
+
+    function formatDur(sec) {
+      const s = Math.max(0, Math.round(sec || 0));
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }
+
+    async function renderRecentTakes() {
+      const takes = await getRecentTakesFromDB();
+      if (!takes || takes.length === 0) {
+        recentSection.classList.add('hidden');
+        return;
+      }
+      recentSection.classList.remove('hidden');
+      recentCount.textContent = `${takes.length} / 5`;
+      recentList.innerHTML = '';
+
+      takes.forEach((take) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'recent-item';
+        const d = new Date(take.createdAt || Date.now());
+        const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        btn.innerHTML = `
+          <span class="recent-name"></span>
+          <span class="recent-meta">
+            <span>${formatDur(take.duration)} · 48 kHz</span>
+            <span>${timeStr}</span>
+          </span>
+        `;
+        btn.querySelector('.recent-name').textContent = take.name || 'Untitled Take';
+        btn.addEventListener('click', () => {
+          const target = take.enhancedPcm ? 'output.html' : 'processing.html';
+          window.location.href = `${target}?mode=file&take=${encodeURIComponent(take.id)}`;
+        });
+        recentList.appendChild(btn);
+      });
+    }
+
+    renderRecentTakes();
+  </script>
+</body>
+</html>

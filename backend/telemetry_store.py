@@ -1,4 +1,4 @@
-"""SQLite + JSONL Telemetry & Opt-In Feedback Store for NEON Browser Noise-Free Mic.
+"""SQLite + JSONL Telemetry & Opt-In Feedback Store for Browser Noise Free Mic.
 
 Stores anonymized runtime telemetry in:
   - SQLite: monitoring/telemetry.db (tables: telemetry_events, feedback_events)

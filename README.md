@@ -1,6 +1,6 @@
-# NEON — Browser Noise-Free Mic
+# Browser Noise Free Mic
 
-**NEON** is a real-time, privacy-first speech enhancement application powered by a strictly causal **GTCRN (Grouped Temporal Convolutional Recurrent Network)** running directly in the browser via **ONNX Runtime Web (WebGPU / WASM)** and **AudioWorklet**, backed by a lightweight **FastAPI** server with COOP/COEP isolation, server-side ONNX denoising, and anonymized **SQLite + JSONL** telemetry.
+**Browser Noise Free Mic** is a real-time, privacy-first speech enhancement application powered by a strictly causal **GTCRN (Grouped Temporal Convolutional Recurrent Network)** running directly in the browser via **ONNX Runtime Web (WebGPU / WASM)** and **AudioWorklet**, backed by a lightweight **FastAPI** server with COOP/COEP isolation, server-side ONNX denoising, and anonymized **SQLite + JSONL** telemetry.
 
 ---
 
@@ -43,9 +43,9 @@ iSTFT Overlap-Add + Dry/Wet Mixer -> Speakers / VB-Cable Virtual Mic
 
 ---
 
-## VB-Cable Windows Setup Guide (Use NEON as a Virtual Mic)
+## VB-Cable Windows Setup Guide (Use Browser Noise Free Mic as a Virtual Mic)
 
-Route NEON's denoised browser output directly into Zoom, Microsoft Teams, Google Meet, or Discord on Windows:
+Route Browser Noise Free Mic's denoised browser output directly into Zoom, Microsoft Teams, Google Meet, or Discord on Windows:
 
 1. **Install VB-Cable**:
    - Download and install **VB-CABLE Virtual Audio Device** from VB-Audio, then reboot Windows if prompted.
@@ -53,13 +53,13 @@ Route NEON's denoised browser output directly into Zoom, Microsoft Teams, Google
    - Open **Windows Sound Settings → More sound settings → Playback & Recording**.
    - Set both **CABLE Input** (Playback) and **CABLE Output** (Recording) to **16-bit / 48000 Hz** (or 16000 Hz) to avoid OS resampling artifacts.
 3. **Route Browser Audio to VB-Cable**:
-   - Launch NEON in Chrome/Edge (`http://localhost:8000`).
+   - Launch Browser Noise Free Mic in Chrome/Edge (`http://localhost:8000`).
    - Open **Windows Settings → System → Sound → Volume mixer**.
    - Locate your browser (Chrome/Edge) and set its **Output device** to **CABLE Input (VB-Audio Virtual Cable)**.
-   - In NEON, select your physical microphone as input and enable live monitoring / Mode B (Denoised).
+   - In Browser Noise Free Mic, select your physical microphone as input and enable live monitoring / Mode B (Denoised).
 4. **Select Virtual Mic in Your Call App**:
    - In Zoom, Teams, Meet, or Discord, set **Microphone** to **CABLE Output (VB-Audio Virtual Cable)**.
-   - Disable the call app's built-in aggressive noise suppression if you want pure NEON output without double-processing.
+   - Disable the call app's built-in aggressive noise suppression if you want pure Browser Noise Free Mic output without double-processing.
 
 ---
 
@@ -93,7 +93,7 @@ pytest -v tests/test_ui_playwright.py
 
 ## Vercel Deployment Instructions
 
-NEON's browser-only static frontend (`web/`) can be deployed directly to Vercel with COOP/COEP headers pre-configured in `vercel.json`:
+Browser Noise Free Mic's browser-only static frontend (`web/`) can be deployed directly to Vercel with COOP/COEP headers pre-configured in `vercel.json`:
 
 1. **Ensure ONNX Models Are in `web/models/`**:
    - Copy `exports/gtcrn_int8.onnx` (and optionally `exports/gtcrn_stream_fp32.onnx`) into `web/models/`.

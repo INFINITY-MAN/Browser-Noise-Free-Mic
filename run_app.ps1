@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    One-command Windows PowerShell launcher for NEON Browser Noise-Free Mic.
+    One-command Windows PowerShell launcher for Browser Noise Free Mic.
 .DESCRIPTION
     Creates/activates a local Python virtual environment (.venv), installs pinned
     dependencies from requirements.txt, starts the FastAPI/Uvicorn server on
@@ -18,7 +18,7 @@ $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ProjectRoot
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  NEON — Browser Noise-Free Mic Launcher (Port $Port)" -ForegroundColor Cyan
+Write-Host "  Browser Noise Free Mic Launcher (Port $Port)" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
 # 1. Verify Python installation

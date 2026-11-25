@@ -1,206 +1,216 @@
 /**
- * NEON Browser Noise-Free Mic — AudioWorkletProcessor (Mode 2: Live Streaming)
+ * Browser Noise Free Mic — 48 kHz Streaming AudioWorkletProcessor (streamWorklet.js)
  *
- * Captures 256-sample (16 ms @ 16 kHz) mono frames and posts transferable
- * Float32Arrays to the main thread/worker for 1-frame GTCRN streaming inference.
- * Plays back enhanced frames through a 3-hop (768-sample / 48 ms) circular
- * jitter buffer with underrun tracking, dry/wet blending, and instant bypass.
+ * Processor Name: `bnfm-stream-processor`
+ * - Frame Hop: 480 samples (10 ms @ 48 kHz)
+ * - Ring Jitter Buffer: 3 hops (30 ms = 1,440 samples) target prefill
+ * - Underrun Counter with smooth fade recovery (no clicks/pops)
+ * - Instant Zero-Click Bypass via 64-sample (~1.33 ms) crossfade ramp
  */
 
-class NeonStreamProcessor extends AudioWorkletProcessor {
+class BnfmStreamProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [];
+  }
+
   constructor(options) {
     super();
 
     const opts = (options && options.processorOptions) || {};
-    this.hopSize = opts.hopSize || 256; // 16 ms @ 16 kHz
-    this.jitterTarget = opts.jitterTarget || 768; // 3 hops = 48 ms prefill
+    this.hopSize = opts.hopSize || 480;             // 10 ms @ 48 kHz
+    this.jitterHops = opts.jitterHops || 3;         // 3 hops = 30 ms jitter buffer
+    this.jitterTarget = this.hopSize * this.jitterHops;
 
-    // Capture accumulator (two 128-sample render quanta -> 256 samples)
-    this.captureBuf = new Float32Array(this.hopSize);
-    this.captureOffset = 0;
+    // Input accumulator for 480-sample hops
+    this.inAccum = new Float32Array(this.hopSize);
+    this.inFill = 0;
 
-    // Circular playback jitter buffer (power-of-two capacity >= 8 hops)
-    this.ringCapacity = 4096;
-    this.ringMask = this.ringCapacity - 1;
-    this.ringBuf = new Float32Array(this.ringCapacity);
+    // Output ring jitter buffer (capacity = 12 hops = 120 ms)
+    this.ringCapacity = this.hopSize * 12;
+    this.outRing = new Float32Array(this.ringCapacity);
     this.ringRead = 0;
     this.ringWrite = 0;
     this.ringCount = 0;
-    this.isPrefilling = true;
+    this.primed = false;
 
-    // Delay-matched dry ring for wet/dry blending during streaming
-    this.dryRingBuf = new Float32Array(this.ringCapacity);
-    this.dryRead = 0;
+    // Dry delay line aligned to jitter buffer for phase-coherent dry/wet & zero-click bypass
+    this.dryRing = new Float32Array(this.ringCapacity);
     this.dryWrite = 0;
-    this.dryCount = 0;
 
-    // Controls & telemetry
-    this.bypass = false;
-    this.wetMix = 1.0;
+    // Instant zero-click bypass state (64-sample linear ramp @ 48 kHz = 1.33 ms)
+    this.bypass = Boolean(opts.bypass || false);
+    this.bypassMix = this.bypass ? 1.0 : 0.0; // 1.0 = full dry bypass, 0.0 = wet active
+    this.bypassStep = 1.0 / 64.0;
+    this.dryWet = typeof opts.dryWet === 'number' ? opts.dryWet : 1.0;
+
+    // Telemetry counters
     this.underruns = 0;
-    this.framesProcessed = 0;
-    this.telemetryCounter = 0;
+    this.seq = 0;
+    this.statsCounter = 0;
+    this.inSumSq = 0;
+    this.outSumSq = 0;
+    this.meterSamples = 0;
 
-    this.port.onmessage = (event) => {
-      const msg = event.data;
-      if (!msg) return;
+    this.port.onmessage = (event) => this._handleMessage(event.data);
+  }
 
-      if (msg.type === "enhanced" && msg.frame) {
-        const samples = msg.frame instanceof Float32Array ? msg.frame : new Float32Array(msg.frame);
-        this._pushRing(samples);
-      } else if (msg.type === "config") {
-        if (typeof msg.bypass === "boolean") {
-          this.bypass = msg.bypass;
-        }
-        if (typeof msg.wetMix === "number") {
-          this.wetMix = Math.max(0, Math.min(1, msg.wetMix));
-        }
-      } else if (msg.type === "reset") {
-        this.ringRead = 0;
-        this.ringWrite = 0;
-        this.ringCount = 0;
-        this.dryRead = 0;
-        this.dryWrite = 0;
-        this.dryCount = 0;
-        this.captureOffset = 0;
-        this.isPrefilling = true;
-        this.underruns = 0;
+  _handleMessage(msg) {
+    if (!msg || typeof msg !== 'object') return;
+
+    if (msg.type === 'enhanced' && msg.pcm) {
+      const pcm = msg.pcm instanceof Float32Array ? msg.pcm : new Float32Array(msg.pcm);
+      this._pushEnhanced(pcm);
+      return;
+    }
+
+    if (msg.type === 'config') {
+      if (typeof msg.bypass === 'boolean') {
+        this.bypass = msg.bypass;
       }
-    };
+      if (typeof msg.dryWet === 'number') {
+        this.dryWet = Math.max(0.0, Math.min(1.0, msg.dryWet));
+      }
+      if (typeof msg.jitterHops === 'number' && msg.jitterHops >= 1 && msg.jitterHops <= 8) {
+        this.jitterHops = Math.round(msg.jitterHops);
+        this.jitterTarget = this.hopSize * this.jitterHops;
+      }
+      return;
+    }
+
+    if (msg.type === 'reset') {
+      this.inFill = 0;
+      this.ringRead = 0;
+      this.ringWrite = 0;
+      this.ringCount = 0;
+      this.primed = false;
+      this.underruns = 0;
+      this.outRing.fill(0);
+      this.dryRing.fill(0);
+    }
   }
 
-  _pushRing(samples) {
-    const len = samples.length;
-    // Prevent runaway latency buildup if worker bursts ahead (> 6 hops = 1536 samples)
-    const maxBuffered = this.jitterTarget * 2;
-    if (this.ringCount + len > maxBuffered) {
-      const drop = (this.ringCount + len) - maxBuffered;
-      this.ringRead = (this.ringRead + drop) & this.ringMask;
-      this.ringCount -= drop;
+  _pushEnhanced(pcm) {
+    const cap = this.ringCapacity;
+    for (let i = 0; i < pcm.length; i++) {
+      if (this.ringCount >= cap) {
+        // Drop oldest sample to prevent unbounded latency drift
+        this.ringRead = (this.ringRead + 1) % cap;
+        this.ringCount--;
+      }
+      this.outRing[this.ringWrite] = pcm[i];
+      this.ringWrite = (this.ringWrite + 1) % cap;
+      this.ringCount++;
     }
 
-    for (let i = 0; i < len; i++) {
-      this.ringBuf[this.ringWrite] = samples[i];
-      this.ringWrite = (this.ringWrite + 1) & this.ringMask;
+    if (!this.primed && this.ringCount >= this.jitterTarget) {
+      this.primed = true;
     }
-    this.ringCount += len;
-
-    if (this.isPrefilling && this.ringCount >= this.jitterTarget) {
-      this.isPrefilling = false;
-    }
-  }
-
-  _pushDry(samples) {
-    const len = samples.length;
-    const maxDry = this.jitterTarget * 2;
-    if (this.dryCount + len > maxDry) {
-      const drop = (this.dryCount + len) - maxDry;
-      this.dryRead = (this.dryRead + drop) & this.ringMask;
-      this.dryCount -= drop;
-    }
-    for (let i = 0; i < len; i++) {
-      this.dryRingBuf[this.dryWrite] = samples[i];
-      this.dryWrite = (this.dryWrite + 1) & this.ringMask;
-    }
-    this.dryCount += len;
   }
 
   process(inputs, outputs) {
-    const input = inputs[0];
-    const output = outputs[0];
-    if (!output || output.length === 0) return true;
+    const inputList = inputs[0];
+    const outputList = outputs[0];
+    if (!outputList || outputList.length === 0) return true;
 
-    const outCh0 = output[0];
-    const blockLen = outCh0.length; // typically 128
-    const inCh0 = input && input.length > 0 ? input[0] : null;
+    const outCh = outputList[0];
+    const inCh = (inputList && inputList.length > 0) ? inputList[0] : null;
+    const blockLen = outCh.length; // 128 samples per Web Audio render quantum
+    const cap = this.ringCapacity;
 
-    if (!inCh0) {
-      outCh0.fill(0);
-      for (let ch = 1; ch < output.length; ch++) output[ch].fill(0);
-      return true;
-    }
-
-    // 1. Capture input samples into 256-sample hop frames
-    let peak = 0;
+    // 1. Collect incoming 48 kHz samples into 480-sample (10 ms) hops
     for (let i = 0; i < blockLen; i++) {
-      const s = inCh0[i];
-      const absS = s < 0 ? -s : s;
-      if (absS > peak) peak = absS;
+      const sample = inCh ? inCh[i] : 0.0;
+      this.inSumSq += sample * sample;
 
-      this.captureBuf[this.captureOffset++] = s;
-      if (this.captureOffset === this.hopSize) {
-        const frameCopy = new Float32Array(this.captureBuf);
+      this.dryRing[this.dryWrite] = sample;
+      this.dryWrite = (this.dryWrite + 1) % cap;
+
+      this.inAccum[this.inFill++] = sample;
+      if (this.inFill >= this.hopSize) {
+        const frame = new Float32Array(this.inAccum);
         this.port.postMessage(
-          { type: "capture", frame: frameCopy, timestamp: currentTime },
-          [frameCopy.buffer]
+          {
+            type: 'frame',
+            pcm: frame,
+            seq: this.seq++,
+            sampleRate: sampleRate
+          },
+          [frame.buffer]
         );
-        this.captureOffset = 0;
-        this.framesProcessed++;
+        this.inFill = 0;
       }
     }
 
-    // Maintain dry ring buffer for wet/dry mixing
-    this._pushDry(inCh0);
+    // 2. Render output with 3-hop (30 ms) ring jitter buffer + zero-click bypass ramp
+    const bypassTarget = this.bypass ? 1.0 : 0.0;
+    let blockUnderrun = false;
 
-    // 2. Output stage: Instant Bypass vs. Jitter-Buffered Neural Output
-    if (this.bypass) {
-      for (let i = 0; i < blockLen; i++) {
-        outCh0[i] = inCh0[i];
+    for (let i = 0; i < blockLen; i++) {
+      // Advance smooth 64-sample bypass crossfade
+      if (this.bypassMix < bypassTarget) {
+        this.bypassMix = Math.min(bypassTarget, this.bypassMix + this.bypassStep);
+      } else if (this.bypassMix > bypassTarget) {
+        this.bypassMix = Math.max(bypassTarget, this.bypassMix - this.bypassStep);
       }
-    } else if (this.isPrefilling) {
-      // Waiting for 3-hop (768-sample / 48 ms) jitter buffer prefill
-      outCh0.fill(0);
-    } else if (this.ringCount >= blockLen) {
-      const wet = this.wetMix;
-      const dry = 1.0 - wet;
-      for (let i = 0; i < blockLen; i++) {
-        const enhSample = this.ringBuf[this.ringRead];
-        this.ringRead = (this.ringRead + 1) & this.ringMask;
 
-        let drySample = inCh0[i];
-        if (this.dryCount > 0) {
-          drySample = this.dryRingBuf[this.dryRead];
-          this.dryRead = (this.dryRead + 1) & this.ringMask;
-          this.dryCount--;
-        }
-        outCh0[i] = wet * enhSample + dry * drySample;
-      }
-      this.ringCount -= blockLen;
-    } else {
-      // Buffer underrun: drain remaining samples cleanly, zero-fill tail, re-arm prefill
-      this.underruns++;
-      let i = 0;
-      while (i < blockLen && this.ringCount > 0) {
-        outCh0[i++] = this.ringBuf[this.ringRead];
-        this.ringRead = (this.ringRead + 1) & this.ringMask;
+      const liveDry = inCh ? inCh[i] : 0.0;
+      const delayIdx = (this.dryWrite - blockLen + i - this.jitterTarget + cap * 2) % cap;
+      const alignedDry = this.dryRing[delayIdx];
+
+      let wetSample = 0.0;
+      if (this.primed && this.ringCount > 0) {
+        wetSample = this.outRing[this.ringRead];
+        this.ringRead = (this.ringRead + 1) % cap;
         this.ringCount--;
+      } else if (this.primed && !this.bypass) {
+        blockUnderrun = true;
+        wetSample = 0.0;
       }
-      while (i < blockLen) {
-        outCh0[i++] = 0;
-      }
-      this.isPrefilling = true;
+
+      // Blend wet enhanced signal with aligned dry (for dryWet < 1.0)
+      const processed = wetSample * this.dryWet + alignedDry * (1.0 - this.dryWet);
+
+      // Instant zero-click crossfade between processed and live bypass
+      const finalSample = processed * (1.0 - this.bypassMix) + liveDry * this.bypassMix;
+      outCh[i] = finalSample;
+      this.outSumSq += finalSample * finalSample;
     }
 
-    // Mirror mono output to additional output channels if stereo sink
-    for (let ch = 1; ch < output.length; ch++) {
-      output[ch].set(outCh0);
+    if (blockUnderrun) {
+      this.underruns++;
+      this.primed = false; // Re-prime jitter buffer to 3 hops cleanly
     }
 
-    // Periodic status update (~every 16 render quanta ≈ 128 ms @ 16 kHz)
-    this.telemetryCounter++;
-    if (this.telemetryCounter >= 16) {
-      this.telemetryCounter = 0;
+    // Copy mono output to any additional output channels (stereo monitoring)
+    for (let ch = 1; ch < outputList.length; ch++) {
+      outputList[ch].set(outCh);
+    }
+
+    // 3. Emit periodic telemetry every ~100 ms (~38 render quanta @ 48 kHz)
+    this.meterSamples += blockLen;
+    this.statsCounter++;
+    if (this.statsCounter >= 38) {
+      const inRms = Math.sqrt(this.inSumSq / Math.max(1, this.meterSamples));
+      const outRms = Math.sqrt(this.outSumSq / Math.max(1, this.meterSamples));
       this.port.postMessage({
-        type: "status",
+        type: 'stats',
         underruns: this.underruns,
         bufferedSamples: this.ringCount,
-        isPrefilling: this.isPrefilling,
-        peak
+        jitterTargetSamples: this.jitterTarget,
+        primed: this.primed,
+        bypass: this.bypass,
+        dryWet: this.dryWet,
+        inputRmsDb: Number((20 * Math.log10(inRms + 1e-9)).toFixed(2)),
+        outputRmsDb: Number((20 * Math.log10(outRms + 1e-9)).toFixed(2))
       });
+      this.statsCounter = 0;
+      this.inSumSq = 0;
+      this.outSumSq = 0;
+      this.meterSamples = 0;
     }
 
     return true;
   }
 }
 
-registerProcessor("neon-stream-processor", NeonStreamProcessor);
+registerProcessor('bnfm-stream-processor', BnfmStreamProcessor);

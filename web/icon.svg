@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Browser Noise Free Mic">
+  <rect width="512" height="512" rx="96" fill="#0A0A0A"/>
+  <rect x="24" y="24" width="464" height="464" rx="76" fill="none" stroke="#262626" stroke-width="8"/>
+  <path d="M148 372V140h46l124 156V140h46v232h-46L194 216v156h-46z" fill="#FFFFFF"/>
+  <circle cx="384" cy="128" r="24" fill="#FF5A00"/>
+</svg>
