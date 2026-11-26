@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://browser-noise-free-mic-web.vercel.app/sitemap.xml

@@ -154,3 +154,11 @@ Browser-Noise-Free-Mic/
 ## ⭐ Support & Feedback
 
 If **Browser Noise Free Mic** saved your calls from fan or background noise, drop a **⭐ Star** on the repo or open an [Issue](https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic/issues) with ideas for `v2.1`!
+
+---
+
+<div align="center">
+
+Built by **Priyanshu Aggarwal** ([INFINITY-MAN](https://github.com/INFINITY-MAN)) · **Browser Noise Free Mic**
+
+</div>
