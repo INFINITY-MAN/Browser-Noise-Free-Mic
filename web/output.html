@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browser Noise Free Mic — Studio Output</title>
+  <meta name="theme-color" content="#0A0A0A" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script>
+    (function () {
+      const saved = localStorage.getItem('bnfm_theme');
+      if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js" defer></script>
+  <script src="./appStore.js" defer></script>
+  <script src="./uiCommon.js" defer></script>
+  <script src="./masteringChain.js" defer></script>
+  <script src="./audioCodec.js" defer></script>
+  <script src="./audioEngine.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <a href="input.html" class="nav-back" aria-label="Start New Take">
+          <span aria-hidden="true">&larr;</span>
+          <span>New Take</span>
+        </a>
+        <a href="input.html" class="brand" aria-label="Browser Noise Free Mic Home">
+          <span>Browser Noise Free Mic</span>
+          <span class="brand-dot" aria-hidden="true"></span>
+        </a>
+      </div>
+
+      <div class="topbar-controls">
+        <label class="switch-control" title="Toggle Stats for Nerds Drawer (Shortcut: N)">
+          <input id="toggle-nerds" type="checkbox" />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span>Stats for Nerds</span>
+          <span class="kbd">N</span>
+        </label>
+
+        <span id="gpu-indicator" class="mono" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);display:inline-flex;align-items:center;gap:6px;"><span id="gpu-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text-muted);display:inline-block;"></span><span id="gpu-indicator-text">Checking GPU...</span></span>
+        <a href="https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic" target="_blank" rel="noopener noreferrer" class="btn btn-sm" title="View source & star on GitHub" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+        <button id="btn-theme" class="theme-toggle" type="button" aria-label="Toggle Light and Dark Theme">
+          <span class="theme-swatch" aria-hidden="true"></span>
+          <span id="theme-label">Light</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="studio-shell">
+    <!-- ==================== FILE / RECORD STUDIO MODE ==================== -->
+    <section id="view-file" class="hidden" style="display:flex;flex-direction:column;gap:24px;">
+      <div class="studio-header">
+        <div>
+          <div class="eyebrow">Studio Review &amp; Mastering</div>
+          <h1 id="take-title" class="take-title">Studio Take</h1>
+        </div>
+        <div id="take-meta" class="take-meta">48 kHz · Mono · GTCRN48kSpectral</div>
+      </div>
+
+      <!-- Waveform Player Card -->
+      <div class="waveform-card">
+        <div id="waveform-stage" class="waveform-stage" title="Click to seek">
+          <canvas id="waveform-canvas" width="1040" height="184"></canvas>
+        </div>
+
+        <div class="waveform-bar">
+          <div class="transport-group">
+            <button id="btn-play" class="btn btn-accent" type="button">
+              <span id="play-label">Play</span>
+              <span class="kbd">Space</span>
+            </button>
+            <span id="timecode" class="timecode">0:00.0 / 0:00.0</span>
+          </div>
+
+          <div class="transport-group">
+            <div class="ab-segmented" role="group" aria-label="Monitor Source">
+              <button id="btn-ab-original" class="ab-btn" type="button">Original</button>
+              <button id="btn-ab-studio" class="ab-btn is-active" type="button">Studio Cut</button>
+            </div>
+            <span class="mono" style="font-size:11px;color:var(--text-muted);">Hold <span class="kbd">O</span> for Original</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 Studio Presets + Trim Silence -->
+      <div class="controls-row">
+        <div class="preset-group">
+          <span class="section-label">Studio Preset</span>
+          <div id="preset-pills" class="preset-pills" role="group" aria-label="Studio Mastering Presets">
+            <button class="pill-btn is-active" type="button" data-preset="podcast">Podcast Studio Cut</button>
+            <button class="pill-btn" type="button" data-preset="natural">Natural Voice</button>
+            <button class="pill-btn" type="button" data-preset="heavy">Heavy Fan/Traffic</button>
+            <button class="pill-btn" type="button" data-preset="raw">Raw Neural</button>
+          </div>
+        </div>
+
+        <label class="switch-control">
+          <input id="toggle-trim-silence" type="checkbox" />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span>Trim Silence</span>
+        </label>
+      </div>
+
+      <!-- Export Row -->
+      <div class="export-bar">
+        <span id="export-status" class="mono" style="font-size:12px;color:var(--text-muted);">Ready for lossless 48 kHz or broadcast AAC export.</span>
+        <div class="export-actions">
+          <button id="btn-export-wav" class="btn btn-solid" type="button">Export WAV 48 kHz</button>
+          <button id="btn-export-aac" class="btn btn-accent" type="button">Export AAC 160k .m4a</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== CONTINUOUS VIRTUAL MIC MODE ==================== -->
+    <section id="view-continuous" class="hidden" style="display:flex;flex-direction:column;gap:24px;">
+      <div class="studio-header">
+        <div>
+          <div class="eyebrow">Live Virtual Microphone Routing</div>
+          <h1 class="take-title">Continuous 48 kHz Pipeline</h1>
+        </div>
+        <div id="live-status-badge" class="status-badge is-live">
+          <span class="rec-dot"></span>
+          <span id="live-status-text">LIVE · NEURAL ACTIVE</span>
+        </div>
+      </div>
+
+      <div class="routing-grid">
+        <div class="field-card">
+          <label for="select-mic-input" class="section-label">Microphone Input</label>
+          <select id="select-mic-input" class="select-input">
+            <option value="default">Default Microphone</option>
+          </select>
+        </div>
+
+        <div class="field-card">
+          <label for="select-audio-output" class="section-label">Output / Virtual Cable (setSinkId)</label>
+          <select id="select-audio-output" class="select-input">
+            <option value="default">Default Output Device</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="live-control-bar">
+        <div class="live-status-group">
+          <button id="btn-live-bypass" class="btn btn-accent btn-lg" type="button">
+            <span id="live-bypass-label">Live · Neural Active</span>
+            <span class="kbd">M</span>
+          </button>
+
+          <button id="btn-room-snapshot" class="btn btn-lg" type="button">
+            <span id="room-snapshot-label">2s Room Snapshot</span>
+          </button>
+
+          <button id="btn-self-monitor" class="btn btn-lg" type="button" title="Prevent voice echo on headphones; enable only to test your own voice">
+            <span id="self-monitor-label">Self-Monitor: OFF (No Echo)</span>
+          </button>
+        </div>
+
+        <button id="btn-refresh-devices" class="btn btn-sm" type="button">Refresh Devices</button>
+      </div>
+
+      <div id="vc-install-bar" class="notice-strip" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;">
+        <div style="flex:1 1 260px;">
+          <strong id="vc-status-title">Virtual Cable Not Detected</strong>
+          <span id="vc-status-desc" style="display:block; margin-top:2px; opacity:0.85;">
+            Install VB-Audio Virtual Cable (free) to route clean audio into Meet, Zoom, Discord, or OBS.
+          </span>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+          <a id="btn-install-vbcable" href="./install_virtual_cable.bat" download="install_virtual_cable.bat" class="btn btn-primary" style="text-decoration:none;">
+            1-Click Install Virtual Cable (Windows)
+          </a>
+          <button id="btn-copy-vbcable-ps" class="btn" type="button" title="Copy one-line PowerShell installer command">
+            Copy PowerShell Cmd
+          </button>
+          <button id="btn-refresh-devices-banner" class="btn" type="button" title="Re-scan audio devices after installing Virtual Cable">
+            Refresh Devices
+          </button>
+        </div>
+      </div>
+
+      <div class="notice-strip">
+        <strong>Headphone &amp; VB-Cable Routing Notice:</strong> Always wear headphones or select
+        <span class="mono">CABLE Input (VB-Audio Virtual Cable)</span> as your output device above, then pick
+        <span class="mono">CABLE Output</span> as your microphone inside Meet, Zoom, Discord, or OBS to avoid acoustic feedback.
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== STATS FOR NERDS COLLAPSIBLE DRAWER ==================== -->
+  <aside id="nerds-drawer" class="nerds-drawer" aria-label="Stats for Nerds Telemetry Drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <span class="drawer-title">Stats for Nerds</span>
+      <button id="btn-close-nerds" class="btn btn-sm" type="button">Close <span class="kbd">N</span></button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- Dual-Engine Selector -->
+      <div class="drawer-section">
+        <span class="section-label">Neural Engine Selector</span>
+        <div class="engine-options" id="engine-selector">
+          <label class="engine-opt is-selected">
+            <input type="radio" name="bnfm-engine" value="df3" />
+            <div>
+              <div class="engine-name">DeepFilterNet3 48 kHz (Studio Cut)</div>
+              <div class="engine-sub">Full-band 24 kHz ERB + complex DF</div>
+            </div>
+          </label>
+          <label class="engine-opt">
+            <input type="radio" name="bnfm-engine" value="gtcrn48k" checked />
+            <div>
+              <div class="engine-name">Custom GTCRN-DF 48 kHz (Ultra-Light)</div>
+              <div class="engine-sub">Minimal footprint for low-power CPUs</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- 5 Live Telemetry Cards -->
+      <div class="drawer-section">
+        <span class="section-label">Live Telemetry</span>
+        <div class="telemetry-grid">
+          <div class="telemetry-card is-wide">
+            <div class="telemetry-label">Execution Hardware</div>
+            <div id="card-hardware" class="telemetry-val is-accent">Detecting...</div>
+          </div>
+          <div class="telemetry-card">
+            <div class="telemetry-label">Frame / Clip Latency</div>
+            <div id="card-latency" class="telemetry-val">-- ms</div>
+          </div>
+          <div class="telemetry-card">
+            <div class="telemetry-label">Real-Time Factor</div>
+            <div id="card-rtf" class="telemetry-val">--x</div>
+          </div>
+          <div class="telemetry-card">
+            <div class="telemetry-label">Est. SNR Gain</div>
+            <div id="card-snr" class="telemetry-val is-accent">-- dB</div>
+          </div>
+          <div class="telemetry-card">
+            <div class="telemetry-label">Memory Footprint</div>
+            <div id="card-memory" class="telemetry-val">-- MB</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dual 20 kHz Full-Band Spectrograms (Black -> Deep Orange -> Pure White) -->
+      <div class="drawer-section">
+        <span class="section-label">20 kHz Full-Band Spectrograms</span>
+        <div class="spec-canvas-wrap">
+          <div class="range-header">
+            <span class="mono" style="font-size:11px;color:var(--text-muted);">Input Noisy (0–20 kHz)</span>
+            <span class="mono" style="font-size:10px;color:var(--text-muted);">Black &rarr; Orange &rarr; White</span>
+          </div>
+          <canvas id="canvas-noisy" class="spec-canvas" width="360" height="92"></canvas>
+        </div>
+        <div class="spec-canvas-wrap">
+          <div class="range-header">
+            <span class="mono" style="font-size:11px;color:var(--text-muted);">Enhanced Output (0–20 kHz)</span>
+            <span class="mono" style="font-size:10px;color:var(--accent);">48 kHz Studio</span>
+          </div>
+          <canvas id="canvas-denoised" class="spec-canvas" width="360" height="92"></canvas>
+        </div>
+      </div>
+
+      <!-- Dry/Wet & Comfort Floor -->
+      <div class="drawer-section">
+        <span class="section-label">Signal Mix &amp; Floor</span>
+        <div class="range-row">
+          <div class="range-header">
+            <span>Dry / Wet Mix</span>
+            <span id="dry-wet-val" class="mono">100%</span>
+          </div>
+          <input id="slider-dry-wet" class="bnfm-range" type="range" min="0" max="100" value="100" />
+        </div>
+
+        <label class="switch-control" style="justify-content:space-between;">
+          <span>Comfort Floor (-65 dBFS)</span>
+          <span>
+            <input id="toggle-comfort-floor" type="checkbox" checked />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </span>
+        </label>
+      </div>
+
+      <!-- Loop A: IndexedDB Room Profile -->
+      <div class="drawer-section">
+        <span class="section-label">Loop A — Room Noise Profile (IndexedDB)</span>
+        <div id="loop-a-status" class="mono" style="font-size:12px;color:var(--text-muted);">
+          No locked room profile yet. Capture a 2s Room Snapshot to adapt.
+        </div>
+        <button id="btn-reset-room" class="btn btn-sm" type="button">Reset Room Profile</button>
+      </div>
+
+      <!-- Local Session Notice (100% Browser-Only) -->
+      <div class="drawer-section">
+        <span class="section-label">100% Local Browser Execution</span>
+        <div class="mono" style="font-size:12px;color:var(--text-muted);">
+          All neural inference runs locally on your GPU (WebGPU) or CPU (WASM SIMD). Zero audio leaves your device.
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <footer class="bnfm-author-footer" style="text-align:center;padding:18px 16px 26px;font-size:12px;opacity:0.72;letter-spacing:0.01em;">Built by <strong>Priyanshu Aggarwal</strong> &middot; <a href="https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">Browser Noise Free Mic</a></footer>
+  <script type="module" src="./outputController.js"></script>
+</body>
+</html>

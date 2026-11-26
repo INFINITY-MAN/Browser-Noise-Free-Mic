@@ -1,0 +1,24 @@
+const CACHE_NAME="bnfm-shell-v3", SHELL_ASSETS=["./index.html", "./input.html", "./processing.html", "./output.html", "./styles.css", "./uiCommon.js", "./audioCodec.js", "./audioEngine.js", "./outputController.js", "./appStore.js", "./masteringChain.js", "./streamWorklet.js", "./manifest.json", "./icon.svg"];
+self.addEventListener("install", (t=> {
+  t.waitUntil(caches.open(CACHE_NAME).then((t=>t.addAll(SHELL_ASSETS))).catch ((()=> {
+
+  }))), self.skipWaiting()
+})), self.addEventListener("activate", (t=> {
+  t.waitUntil(caches.keys().then((t=>Promise.all(t.filter((t=>t!==CACHE_NAME)).map((t=>caches.delete(t))))))), self.clients.claim()
+})), self.addEventListener("fetch", (t=> {
+  const e=t.request; if ("GET"!==e.method) return; const n=new URL(e.url); n.origin===self.location.origin&&n.pathname.endsWith(".onnx")?t.respondWith(caches.match(e).then((t=>t||fetch(e).then((t=> {
+    if (t&&200===t.status) {
+      const n=t.clone(); caches.open(CACHE_NAME).then((t=>t.put(e, n))).catch ((()=> {
+
+      }))
+    }
+    return t
+  }))))):t.respondWith(fetch(e).then((t=> {
+    if (t&&200===t.status&&n.origin===self.location.origin) {
+      const n=t.clone(); caches.open(CACHE_NAME).then((t=>t.put(e, n))).catch ((()=> {
+
+      }))
+    }
+    return t
+  })).catch ((()=>caches.match(e))))
+}));

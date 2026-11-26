@@ -1,0 +1,4 @@
+Project/
+training/
+checkpoints/
+*.ipynb

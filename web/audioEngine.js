@@ -1,0 +1,469 @@
+!function(e, t) {
+  const n=function(e) {
+    "use strict";
+    const t=48e3, n=1024, r="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/", o=r+"ort.webgpu.min.js", a=48e3, i=960, s=480, c=481, l=32, f=96, d=5, u=2, w= {
+      ortLoaded:false, webgpuAvailable:false, gpuName:null, df3Sessions:null, df3InitPromise:null, df3Provider:null, df3HardwareLabel:null, gtcrnSession:null, gtcrnInitPromise:null, gtcrnProvider:null, gtcrnHardwareLabel:null, lastError:null
+    };
+    function m(e, t) {
+      const n=Math.min(e.length, t.length);
+      if (n<16) return 0;
+      let r=0, o=0, a=0;
+      for (let i=0; i<n; i++) {
+        const n=e[i], s=t[i], c=n-s;
+        r+=n*n, o+=c*c, a+=s*s
+      }
+      if (r<1e-12||a<1e-12) return 0;
+      const i=(a+1e-10)/(o+1e-10), s=10*Math.log10(Math.max(.25, i));
+      return Number(Math.max(-6, Math.min(30, s)).toFixed(1))
+    }
+    function p() {
+      return e.ort&&e.ort.InferenceSession?(w.ortLoaded=true, Promise.resolve(e.ort)):"undefined"==typeof document?Promise.reject(new Error("No DOM available to load onnxruntime-web")):new Promise(((t, n)=> {
+        const r=document.querySelector('script[data-bnfm-ort="1"], script[src*="ort.webgpu"]'); if (r) return e.ort&&e.ort.InferenceSession?t(e.ort):(r.addEventListener("load", (()=>t(e.ort))), void r.addEventListener("error", (()=>n(new Error("Failed to load onnxruntime-web script"))))); const a=document.createElement("script"); a.src=o, a.async=true, a.dataset.bnfmOrt="1", a.onload=()=> {
+          w.ortLoaded=true, t(e.ort)
+        }, a.onerror=()=>n(new Error("Failed to load onnxruntime-web from CDN: "+o)), document.head.appendChild(a)
+      }))
+    }
+    async function h() {
+      let e=false, t=null;
+      try {
+        if ("undefined"!=typeof navigator&&navigator.gpu&&"function"==typeof navigator.gpu.requestAdapter) {
+          const n=await navigator.gpu.requestAdapter({
+            powerPreference:"high-performance"
+          });
+          if (n) {
+            e=true;
+            const r=n.info|| {
+
+            };
+            t=r.description||r.device||r.vendor||"WebGPU GPU"
+          }
+        }
+      } catch {
+        e=false
+      }
+      w.webgpuAvailable=e, w.gpuName=t;
+      return {
+        webgpuAvailable:e, gpuName:t, provider:e?"webgpu":"wasm", hardwareLabel:e?`GPU: ${t||"WebGPU (FP32)"}`:"CPU: WASM SIMD"
+      }
+    }
+    function g(e, t, n= {
+
+    }) {
+      e.env&&e.env.wasm&&(e.env.wasm.wasmPaths=n.wasmPaths||r, e.env.wasm.simd=true, e.env.wasm.proxy=!t.webgpuAvailable, e.env.wasm.numThreads=!t.webgpuAvailable&&"undefined"!=typeof self&&self.crossOriginIsolated?Math.min(4, "undefined"!=typeof navigator&&navigator.hardwareConcurrency||2):1), e.env&&(e.env.logLevel="error")
+    }
+    async function b(e) {
+      if ("function"!=typeof fetch) return;
+      const t=await fetch(e,  {
+        method:"HEAD"
+      }).catch ((()=>null));
+      if (t&&!t.ok) throw new Error(`Model file missing (${t.status}): ${e}`)
+    }
+    async function y(e= {
+
+    }) {
+      if (w.df3Sessions) return {
+        sessions:w.df3Sessions, provider:w.df3Provider, hardwareLabel:w.df3HardwareLabel
+      };
+      if (w.df3InitPromise) return w.df3InitPromise;
+      w.df3InitPromise=(async()=> {
+        const t=await p(); if (!t||!t.InferenceSession) throw new Error("onnxruntime-web (ort.InferenceSession) unavailable"); const n=await h(); g(t, n, e); const r=e.modelBase||"./models/df3", o= {
+          enc:`${r}/enc.onnx`, erb_dec:`${r}/erb_dec.onnx`, df_dec:`${r}/df_dec.onnx`
+        }; async function a(e) {
+          const n= {
+            executionProviders:[e], graphOptimizationLevel:"all"
+          }; return {
+            enc:await t.InferenceSession.create(o.enc, n), erb_dec:await t.InferenceSession.create(o.erb_dec, n), df_dec:await t.InferenceSession.create(o.df_dec, n)
+          }
+        }
+        await Promise.all([b(o.enc), b(o.erb_dec), b(o.df_dec)]); let i=null, s="wasm", c="CPU: WASM SIMD"; if (n.webgpuAvailable) try {
+          i=await a("webgpu"), s="webgpu", c=`GPU: ${n.gpuName||"WebGPU (FP32)"}`
+        } catch (e) {
+          w.lastError=String(e&&e.message||e), t.env&&t.env.wasm&&(t.env.wasm.proxy=true), i=await a("wasm"), s="wasm", c="CPU: WASM SIMD (WebGPU fallback)"
+        } else i=await a("wasm"), s="wasm", c="CPU: WASM SIMD"; return w.df3Sessions=i, w.df3Provider=s, w.df3HardwareLabel=c,  {
+          sessions:i, provider:s, hardwareLabel:c
+        }
+      })();
+      try {
+        return await w.df3InitPromise
+      } catch (e) {
+        throw w.df3InitPromise=null, w.lastError=String(e&&e.message||e), e
+      }
+    }
+    async function M(e= {
+
+    }) {
+      if (w.gtcrnSession) return {
+        session:w.gtcrnSession, provider:w.gtcrnProvider, hardwareLabel:w.gtcrnHardwareLabel
+      };
+      if (w.gtcrnInitPromise) return w.gtcrnInitPromise;
+      w.gtcrnInitPromise=(async()=> {
+        const t=await p(); if (!t||!t.InferenceSession) throw new Error("onnxruntime-web (ort.InferenceSession) unavailable"); const n=await h(); g(t, n, e); const r=e.gtcrnModelUrl||"./models/gtcrn48k_fp32.onnx"; await b(r); let o=null, a="wasm", i="CPU: WASM SIMD"; if (n.webgpuAvailable) try {
+          o=await t.InferenceSession.create(r,  {
+            executionProviders:["webgpu"], graphOptimizationLevel:"all"
+          }), a="webgpu", i=`GPU: ${n.gpuName||"WebGPU (FP32)"}`
+        } catch (e) {
+          w.lastError=String(e&&e.message||e), t.env&&t.env.wasm&&(t.env.wasm.proxy=true), o=await t.InferenceSession.create(r,  {
+            executionProviders:["wasm"], graphOptimizationLevel:"all"
+          }), a="wasm", i="CPU: WASM SIMD (WebGPU fallback)"
+        } else o=await t.InferenceSession.create(r,  {
+          executionProviders:["wasm"], graphOptimizationLevel:"all"
+        }), a="wasm", i="CPU: WASM SIMD"; return w.gtcrnSession=o, w.gtcrnProvider=a, w.gtcrnHardwareLabel=i,  {
+          session:o, provider:a, hardwareLabel:i
+        }
+      })();
+      try {
+        return await w.gtcrnInitPromise
+      } catch (e) {
+        throw w.gtcrnInitPromise=null, w.lastError=String(e&&e.message||e), e
+      }
+    }
+    function v(e, t, n=false) {
+      const r=e.length;
+      for (let n=1, o=0; n<r; n++) {
+        let a=r>>1;
+        for (; o&a; a>>=1) o^=a;
+        if (o^=a, n<o) {
+          const r=e[n];
+          e[n]=e[o], e[o]=r;
+          const a=t[n];
+          t[n]=t[o], t[o]=a
+        }
+      }
+      const o=n?1:-1;
+      for (let n=2; n<=r; n<<=1) {
+        const a=2*o*Math.PI/n, i=Math.cos(a), s=Math.sin(a), c=n>>1;
+        for (let o=0; o<r; o+=n) {
+          let n=1, r=0;
+          for (let a=0; a<c; a++) {
+            const l=e[o+a], f=t[o+a], d=e[o+a+c]*n-t[o+a+c]*r, u=e[o+a+c]*r+t[o+a+c]*n;
+            e[o+a]=l+d, t[o+a]=f+u, e[o+a+c]=l-d, t[o+a+c]=f-u;
+            const w=n*i-r*s;
+            r=n*s+r*i, n=w
+          }
+        }
+      }
+      if (n) for (let n=0; n<r; n++) e[n]/=r, t[n]/=r
+    }
+    function P() {
+      const e=e=>9.265*Math.log(1+e/(24.7*9.265)), t=e=>24.7*9.265*(Math.exp(e/9.265)-1), n=e(0), r=(e(a/2)-n)/l, o=new Int32Array(l);
+      let s=0;
+      for (let e=0; e<l; e++) {
+        const c=t(n+(e+1)*r);
+        let l=Math.round(c*i/a), f=Math.max(2, l-s);
+        o[e]=f, s+=f
+      }
+      let f=c-s, d=l-1;
+      for (; 0!==f; ) f>0?(o[d]+=1, f-=1):o[d]>2&&(o[d]-=1, f+=1), d=0===d?l-1:d-1;
+      const u=new Int32Array(l);
+      let w=0;
+      for (let e=0; e<l; e++) u[e]=w, w+=o[e];
+      return {
+        starts:u, widths:o
+      }
+    }
+    const F=P(), A=(()=> {
+      const e=new Float32Array(i); for (let t=0; t<i; t++) {
+        const n=Math.sin(Math.PI*(t+.5)/i); e[t]=Math.sin(Math.PI/2*n*n)
+      }
+      return e
+    })(), S=new Float32Array(225), N=new Float32Array(225), I=new Float32Array(960), x=new Float32Array(960);
+    function C(e, t, n) {
+      const r=new Float32Array(960), o=new Float32Array(960), a=n?-1:1;
+      for (let n=0; n<64; n++) for (let i=0; i<15; i++) {
+        let s=0, c=0;
+        const l=15*i;
+        for (let r=0; r<15; r++) {
+          const o=64*r+n, i=S[l+r], f=a*N[l+r], d=e[o], u=t[o];
+          s+=d*i-u*f, c+=d*f+u*i
+        }
+        const f=64*i+n, d=I[f], u=a*x[f];
+        r[64*i+n]=s*d-c*u, o[64*i+n]=s*u+c*d
+      }
+      const i=new Float32Array(64), s=new Float32Array(64);
+      for (let a=0; a<15; a++) {
+        const c=64*a;
+        if (i.set(r.subarray(c, c+64)), s.set(o.subarray(c, c+64)), v(i, s, n), n) for (let n=0; n<64; n++) {
+          const r=15*n+a;
+          e[r]=i[n]/15, t[r]=s[n]/15
+        } else for (let n=0; n<64; n++) {
+          const r=15*n+a;
+          e[r]=i[n], t[r]=s[n]
+        }
+      }
+    }
+    async function L(t, n= {
+
+    }) {
+      const {
+        sessions:r, provider:o, hardwareLabel:w
+      }
+      =await y(n), m=e.ort, p="undefined"!=typeof performance?performance.now():Date.now(), h=t.length, g=Math.max(1, Math.ceil((h+s)/s)), b=new Float32Array(g*c), M=new Float32Array(g*c), v=new Float32Array(g*l), P=new Float32Array(2*g*f), S=new Float32Array(l).fill(-60), N=new Float32Array(f).fill(.001), I=Math.exp(-s/(1*a)), x=new Float32Array(i), L=new Float32Array(i), k=1/i;
+      for (let e=0; e<g; e++) {
+        15==(15&e)&&await new Promise((e=>setTimeout(e, 0)));
+        const n=e*s-s;
+        x.fill(0), L.fill(0);
+        for (let e=0; e<i; e++) {
+          const r=n+e;
+          r>=0&&r<h&&(x[e]=t[r]*A[e])
+        }
+        C(x, L, false);
+        const r=e*c;
+        for (let e=0; e<c; e++) b[r+e]=x[e]*k, M[r+e]=L[e]*k;
+        const o=e*l;
+        for (let e=0; e<l; e++) {
+          const t=F.starts[e], n=F.widths[e];
+          let a=0;
+          for (let e=0; e<n; e++) {
+            const n=b[r+t+e], o=M[r+t+e];
+            a+=n*n+o*o
+          }
+          const s=10*Math.log10(a/n*i+1e-10);
+          S[e]=I*S[e]+(1-I)*s, v[o+e]=(s-S[e])/40
+        }
+        const a=e*f, d=g*f+e*f;
+        for (let e=0; e<f; e++) {
+          const t=b[r+e], n=M[r+e], o=Math.sqrt(t*t+n*n);
+          N[e]=I*N[e]+(1-I)*o;
+          const i=1/Math.sqrt(N[e]+1e-8);
+          P[a+e]=t*i, P[d+e]=n*i
+        }
+      }
+      const D=new m.Tensor("float32", v, [1, 1, g, l]), W=new m.Tensor("float32", P, [1, 2, g, f]), E=await r.enc.run({
+        feat_erb:D, feat_spec:W
+      });
+      await new Promise((e=>setTimeout(e, 0)));
+      const G=await r.erb_dec.run({
+        emb:E.emb, e3:E.e3, e2:E.e2, e1:E.e1, e0:E.e0
+      });
+      await new Promise((e=>setTimeout(e, 0)));
+      const T=await r.df_dec.run({
+        emb:E.emb, c0:E.c0
+      });
+      await new Promise((e=>setTimeout(e, 0)));
+      const _=G.m.data, H=T.coefs.data, U=T[235]?T[235].data:null, O=new Float32Array(h), B=new Float32Array(h);
+      for (let e=0; e<g; e++) {
+        15==(15&e)&&await new Promise((e=>setTimeout(e, 0)));
+        const t=e*c, n=e*l, r=e*f*10, o=U?Math.max(0, Math.min(1, U[e])):.7;
+        x.fill(0), L.fill(0);
+        for (let e=0; e<l; e++) {
+          const r=Math.max(.02, Math.min(1, _[n+e])), o=F.starts[e], a=F.widths[e];
+          for (let e=0; e<a; e++) {
+            const n=o+e;
+            x[n]=b[t+n]*r*i, L[n]=M[t+n]*r*i
+          }
+        }
+        for (let n=0; n<f; n++) {
+          const a=r+10*n;
+          let s=0, l=0;
+          for (let t=0; t<d; t++) {
+            const r=e-(d-1-u)+t;
+            if (r>=0&&r<g) {
+              const e=b[r*c+n], o=M[r*c+n], i=H[a+2*t], f=H[a+2*t+1];
+              s+=e*i-o*f, l+=e*f+o*i
+            }
+          }
+          const f=x[n], w=L[n], m=(1-o)*f+o*(s*i), p=(1-o)*w+o*(l*i), h=Math.hypot(b[t+n], M[t+n])*i+1e-6, y=Math.hypot(m, p), v=y>1.5*h?1.5*h/y:1;
+          x[n]=m*v, L[n]=p*v
+        }
+        for (let e=1; e<c-1; e++) x[i-e]=x[e], L[i-e]=-L[e];
+        C(x, L, true);
+        const a=e*s-s;
+        for (let e=0; e<i; e++) {
+          const t=a+e;
+          if (t>=0&&t<h) {
+            const n=A[e];
+            O[t]+=x[e]*n, B[t]+=n*n
+          }
+        }
+      }
+      let z=true, R=0;
+      for (let e=0; e<h; e++) {
+        const n=B[e]>1e-6?O[e]/B[e]:t[e];
+        if (!Number.isFinite(n)) {
+          z=false;
+          break
+        }
+        O[e]=Math.max(-1, Math.min(1, n)), R+=O[e]*O[e]
+      }
+      if (!z||R<1e-9) throw new Error("DF3 ONNX client output failed sanity check");
+      const $=("undefined"!=typeof performance?performance.now():Date.now())-p;
+      return {
+        denoisedPCM:O, inferMs:Number($.toFixed(1)), provider:o, hardwareLabel:w
+      }
+    }
+    !function() {
+      for (let e=0; e<15; e++) {
+        for (let t=0; t<15; t++) {
+          const n=-2*Math.PI*e*t/15;
+          S[15*e+t]=Math.cos(n), N[15*e+t]=Math.sin(n)
+        }
+        for (let t=0; t<64; t++) {
+          const n=-2*Math.PI*e*t/960;
+          I[64*e+t]=Math.cos(n), x[64*e+t]=Math.sin(n)
+        }
+      }
+    }
+    ();
+    const k=(()=> {
+      const e=new Float32Array(i); for (let t=0; t<i; t++) {
+        const n=.5*(1-Math.cos(2*Math.PI*t/i)); e[t]=Math.sqrt(n)
+      }
+      return e
+    })();
+    async function D(n, r= {
+
+    }) {
+      const {
+        session:o, provider:a, hardwareLabel:l
+      }
+      =await M(r), f=e.ort, d=performance.now(), u=n.length, w=Math.max(1, Math.ceil((u+s)/s)), p=new Float32Array(w*c*2), h=new Float32Array(i), g=new Float32Array(i);
+      for (let e=0; e<w; e++) {
+        const t=e*s-s;
+        h.fill(0), g.fill(0);
+        for (let e=0; e<i; e++) {
+          const r=t+e;
+          r>=0&&r<u&&(h[e]=n[r]*k[e])
+        }
+        C(h, g, false);
+        const r=e*c*2;
+        for (let e=0; e<c; e++) p[r+2*e]=h[e], p[r+2*e+1]=g[e]
+      }
+      const b=o.inputNames&&o.inputNames[0]||"spec_ri", y=o.outputNames&&o.outputNames[0]||"enh_ri", v=new f.Tensor("float32", p, [1, w, c, 2]), P=await o.run({
+        [b]:v
+      }), F=(P[y]||P[Object.keys(P)[0]]).data, A=new Float32Array(u), S=new Float32Array(u);
+      for (let e=0; e<w; e++) {
+        const t=e*c*2;
+        h.fill(0), g.fill(0);
+        for (let e=0; e<c; e++) h[e]=F[t+2*e], g[e]=F[t+2*e+1];
+        for (let e=1; e<c-1; e++) h[i-e]=h[e], g[i-e]=-g[e];
+        C(h, g, true);
+        const n=e*s-s;
+        for (let e=0; e<i; e++) {
+          const t=n+e;
+          if (t>=0&&t<u) {
+            const n=k[e];
+            A[t]+=h[e]*n, S[t]+=n*n
+          }
+        }
+      }
+      for (let e=0; e<u; e++) {
+        const t=S[e]>1e-6?A[e]/S[e]:A[e];
+        A[e]=Number.isFinite(t)?Math.max(-.995, Math.min(.995, t)):0
+      }
+      const N=Number((performance.now()-d).toFixed(1)), I=u/t*1e3;
+      return {
+        pcm:A, provider:a, hardwareLabel:l, latencyMs:N, rtf:Number((N/Math.max(1, I)).toFixed(3)), snrGainDb:m(n, A)
+      }
+    }
+    function W(e) {
+      return "gtcrn"===e||"gtcrn48k"===e?"gtcrn48k":"df3"
+    }
+    async function E(n, r= {
+
+    }) {
+      const o=W(r.engine), a=r.masteringPreset||"podcast", i="gtcrn48k"===o?await D(n, r):await L(n, r), s=i.pcm, c="webgpu"===i.provider, l= {
+        engine:o, engineLabel:"gtcrn48k"===o?c?"GTCRN-DF 48 kHz (WebGPU ONNX)":"GTCRN-DF 48 kHz (WASM SIMD ONNX)":c?"DeepFilterNet3 48 kHz (WebGPU ONNX)":"DeepFilterNet3 48 kHz (WASM SIMD ONNX)", hardware:i.hardwareLabel, provider:i.provider, latencyMs:i.latencyMs, rtf:i.rtf, snrGainDb:i.snrGainDb, sampleRate:t, offlineFallback:false
+      };
+      let f=s;
+      const masteringApi = e.BNFMMasteringChain || e.BNFMMastering;
+      if (masteringApi && "function" == typeof masteringApi.processOffline) try {
+        const o = masteringApi.processOffline(s, {
+          sampleRate: t,
+          preset: a,
+          edgeTrim: Boolean(r.trimSilence),
+          comfortNoise: false !== r.comfortFloor,
+          dryWet: "number" == typeof r.dryWet ? r.dryWet : 1,
+          rawPcm: n
+        });
+        o && o.pcm && (f = o.pcm);
+      } catch {
+
+      }
+      return {
+        rawPCM:n, denoisedPCM:s, studioCutPCM:f, enhancedPcm:f, telemetry:l
+      }
+    }
+    async function G(e, t= {
+
+    }) {
+      return E(e, t)
+    }
+    async function T(e= {
+
+    }) {
+      return "gtcrn48k"===W(e.engine||"undefined"!=typeof localStorage&&localStorage.getItem("bnfm_engine")||"gtcrn48k")?M(e):y(e)
+    }
+    function _(e= {
+
+    }) {
+      const n=e.hopSize||480, r=e.strideHops||8, o=n*r, a=n*(2*r), i=new Float32Array(a);
+      for (let e=0; e<a; e++) i[e]=.5*(1-Math.cos(2*Math.PI*e/a));
+      let s=W(e.engine||"gtcrn48k"), c=false, l=false, f=new Float32Array(o), d=new Float32Array(o), u=new Float32Array(o), w=0, m=null, p=0;
+      const h="function"==typeof e.onEnhancedHop?e.onEnhancedHop:()=> {
+
+      }, g="function"==typeof e.onTelemetry?e.onTelemetry:()=> {
+
+      }, b="function"==typeof e.onError?e.onError:()=> {
+
+      };
+      async function v(u) {
+        if (!c) {
+          l=true;
+          try {
+            const l=new Float32Array(a);
+            l.set(f, 0), l.set(u, o), f.set(u);
+            const w="gtcrn48k"===s?await D(l, e):await L(l, e);
+            if (c) return;
+            const m=w.pcm, b=new Float32Array(o);
+            for (let e=0; e<o; e++) {
+              const t=d[e]+m[e]*i[e];
+              b[e]=Math.max(-.995, Math.min(.995, t)), d[e]=m[e+o]*i[e+o]
+            }
+            for (let e=0; e<r; e++) {
+              const t=b.slice(e*n, (e+1)*n);
+              h(t)
+            }
+            p++;
+            const y=Number((a/t*1e3+w.latencyMs).toFixed(1)), M=Number((w.latencyMs/(o/t*1e3)).toFixed(2)), v="webgpu"===w.provider;
+            g({
+              engine:s, engineLabel:"gtcrn48k"===s?v?"GTCRN-DF 48 kHz (WebGPU Live)":"GTCRN-DF 48 kHz (WASM Live)":v?"DeepFilterNet3 48 kHz (WebGPU Live)":"DeepFilterNet3 48 kHz (WASM Live)", hardware:w.hardwareLabel, provider:w.provider, inferenceMs:w.latencyMs, latencyMs:y, rtf:M, snrGainDb:w.snrGainDb, chunksProcessed:p
+            })
+          } catch (e) {
+            b(e)
+          } finally {
+            if (l=false, !c&&m) {
+              const e=m;
+              m=null, v(e)
+            }
+          }
+        }
+      }
+      return {
+        init:async()=>"gtcrn48k"===s?M(e):y(e), setEngine(e) {
+          s=W(e)
+        }, pushHop(e) {
+          if (c||!e) return;
+          const t=Math.min(e.length, o-w);
+          if (u.set(e.subarray(0, t), w), w+=t, w>=o) {
+            const e=new Float32Array(u);
+            w=0, l?m=e:v(e)
+          }
+        }, stop() {
+          c=true, m=null
+        }
+      }
+    }
+    function H(t) {
+      return function(...n) {
+        if (e.BNFMCodec&&"function"==typeof e.BNFMCodec[t]) return e.BNFMCodec[t](...n);
+        throw new Error(`BNFMCodec.${t} not loaded (include audioCodec.js before audioEngine.js)`)
+      }
+    }
+    return {
+      TARGET_SAMPLE_RATE:t, FFT_SIZE:n, ORT_CDN_BASE:r, probeHardware:h, initDF3Onnx:y, initGTCRN48kOnnx:M, runDF3OnnxClient:L, runGTCRN48kOnnxClient:D, enhanceAudio:E, enhanceBuffer:G, warmupContinuous:T, createLiveNeuralProcessor:_, decodeAudioFile:H("decodeAudioFile"), encodeWav48k:H("encodeWav48k"), encodeWavBuffer48k:H("encodeWavBuffer48k"), decodeWavBuffer:H("decodeWavBuffer"), exportAAC:H("exportAAC"), renderSpectrogram:H("renderSpectrogram"), renderComparisonSpectrograms:H("renderComparisonSpectrograms"), generateIndianHouseholdDemo:H("generateIndianHouseholdDemo"), calibrateRoomSnapshot:H("calibrateRoomSnapshot"), computeWelchSpectrum:H("computeWelchSpectrum")
+    }
+  }
+  (e);
+  "object"==typeof module&&module.exports?module.exports=n:e.BNFMAudioEngine=n
+}
+("undefined"!=typeof self?self:"undefined"!=typeof globalThis?globalThis:this);

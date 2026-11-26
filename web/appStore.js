@@ -1,0 +1,177 @@
+!function(e, t) {
+  "object"==typeof module&&module.exports?module.exports=t():e.BNFMStore=t()
+}
+("undefined"!=typeof globalThis?globalThis:this, (function() {
+  "use strict"; const e="BNFM_DB", t=1, n="activeJob", r="takesHistory", o="calibration", a="current", i="roomProfile", c=5, s="BNFM_PREFS", u=Object.freeze({
+    theme:"light", nerdsMode:false, selectedEngine:"df3", selectedPreset:"podcast", comfortNoise:true, edgeTrim:true, dryWetPct:100
+  }); let d=null; function l() {
+    return d||("undefined"==typeof indexedDB?Promise.reject(new Error("IndexedDB is not available in this environment.")):(d=new Promise(((a, i)=> {
+      const c=indexedDB.open(e, t); c.onupgradeneeded=e=> {
+        const t=e.target.result; if (t.objectStoreNames.contains(n)||t.createObjectStore(n,  {
+          keyPath:"id"
+        }), !t.objectStoreNames.contains(r)) {
+          t.createObjectStore(r,  {
+            keyPath:"id"
+          }).createIndex("createdAt", "createdAt",  {
+            unique:false
+          })
+        }
+        t.objectStoreNames.contains(o)||t.createObjectStore(o,  {
+          keyPath:"id"
+        })
+      }, c.onsuccess=()=>a(c.result), c.onerror=()=> {
+        d=null, i(c.error||new Error("Failed to open BNFM_DB."))
+      }
+    })), d))
+  }
+  function f(e) {
+    if (!e) return null; if (e instanceof Float32Array) return e.buffer.slice(e.byteOffset, e.byteOffset+e.byteLength); if (e instanceof ArrayBuffer) return e.slice(0); if (ArrayBuffer.isView(e)) {
+      const t=new Float32Array(e.length); for (let n=0; n<e.length; n++) t[n]=e[n]; return t.buffer
+    }
+    return null
+  }
+  function m(e) {
+    return e?e instanceof Float32Array?e:e instanceof ArrayBuffer?new Float32Array(e):ArrayBuffer.isView(e)?new Float32Array(e.buffer, e.byteOffset, Math.floor(e.byteLength/4)):null:null
+  }
+  function y(e) {
+    return e? {
+      ...e, rawPCM:m(e.rawPCM), enhancedPCM:m(e.enhancedPCM), masteredPCM:m(e.masteredPCM), sampleRate:e.sampleRate||48e3
+    }
+    :null
+  }
+  function p(e, t) {
+    const n=f(e.rawPCM), r=f(e.enhancedPCM), o=f(e.masteredPCM), i=e.sampleRate||48e3, c=n?n.byteLength/4:0; return {
+      id:t||e.id||a, fileName:e.fileName||"untitled_48k.wav", mode:e.mode||"upload", engine:e.engine||P().selectedEngine, preset:e.preset||P().selectedPreset, sampleRate:i, durationSec:e.durationSec||(c>0?c/i:0), rawPCM:n, enhancedPCM:r, masteredPCM:o, telemetry:e.telemetry? {
+        ...e.telemetry
+      }
+      :null, createdAt:e.createdAt||(new Date).toISOString(), updatedAt:(new Date).toISOString()
+    }
+  }
+  function w(e, t, n) {
+    return l().then((r=>new Promise(((o, a)=> {
+      const i=r.transaction(e, t), c=i.objectStore(e); let s; try {
+        s=n(c, i)
+      } catch (e) {
+        return i.abort(), void a(e)
+      }
+      s&&"function"==typeof s.then?s.then((e=> {
+        i.oncomplete=()=>o(e), i.onerror=()=>a(i.error)
+      }), (e=> {
+        try {
+          i.abort()
+        } catch (e) {
+
+        }
+        a(e)
+      })):(i.oncomplete=()=>o(s), i.onerror=()=>a(i.error))
+    }))))
+  }
+  function g(e) {
+    return new Promise(((t, n)=> {
+      e.onsuccess=()=>t(e.result), e.onerror=()=>n(e.error)
+    }))
+  }
+  async function h(e) {
+    const t=p(e, a); return await w(n, "readwrite", (e=>g(e.put(t)))), y(t)
+  }
+  async function S() {
+    return y(await w(n, "readonly", (e=>g(e.get(a)))))
+  }
+  async function A(e) {
+    return y(await w(r, "readonly", (t=>g(t.get(e)))))
+  }
+  function P() {
+    if ("undefined"==typeof localStorage) return {
+      ...u
+    }; try {
+      const e=localStorage.getItem(s); if (!e) return {
+        ...u
+      }; const t=JSON.parse(e); return {
+        ...u, ...t
+      }
+    } catch (e) {
+      return {
+        ...u
+      }
+    }
+  }
+  function b(e) {
+    const t= {
+      ...P(), ...e
+    }; if ("undefined"!=typeof localStorage) try {
+      localStorage.setItem(s, JSON.stringify(t))
+    } catch (e) {
+
+    }
+    return e&&"string"==typeof e.theme&&M(t.theme), t
+  }
+  function M(e) {
+    if ("undefined"==typeof document||!document.documentElement) return; const t="dark"===e?"dark":"light"; document.documentElement.setAttribute("data-theme", t)
+  }
+  return {
+    DB_NAME:e, DB_VERSION:t, MAX_HISTORY_TAKES:c, DEFAULT_PREFS:u, openDB:l, saveActiveJob:h, getActiveJob:S, patchActiveJob:async function(e) {
+      const t=await S()|| {
+
+      }; return h({
+        ...t, ...e, telemetry:e.telemetry? {
+          ...t.telemetry|| {
+
+          }, ...e.telemetry
+        }
+        :t.telemetry
+      })
+    }, clearActiveJob:async function() {
+      await w(n, "readwrite", (e=>g(e.delete(a))))
+    }, saveTake:async function(e) {
+      const t=e.id||("undefined"!=typeof crypto&&"function"==typeof crypto.randomUUID?"take_"+crypto.randomUUID():"take_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2, 8)), n=p({
+        ...e, createdAt:e.createdAt||(new Date).toISOString()
+      }, t); return await w(r, "readwrite", (async e=> {
+        await g(e.put(n)); const t=await g(e.getAll()); if (t.length>c) {
+          t.sort(((e, t)=>new Date(t.createdAt).getTime()-new Date(e.createdAt).getTime())); const n=t.slice(c); for (const t of n) await g(e.delete(t.id))
+        }
+      })), y(n)
+    }, getTakesHistory:async function(e=false) {
+      const t=await w(r, "readonly", (e=>g(e.getAll()))); return t.sort(((e, t)=>new Date(t.createdAt).getTime()-new Date(e.createdAt).getTime())), e?t.map(y):t.map((e=>({
+        id:e.id, fileName:e.fileName, mode:e.mode, engine:e.engine, preset:e.preset, sampleRate:e.sampleRate||48e3, durationSec:e.durationSec||0, telemetry:e.telemetry||null, createdAt:e.createdAt, updatedAt:e.updatedAt, hasRawPCM:!!e.rawPCM, hasEnhancedPCM:!!e.enhancedPCM
+      })))
+    }, getTakeById:A, restoreTakeToActive:async function(e) {
+      const t=await A(e); return t?h(t):null
+    }, deleteTake:async function(e) {
+      await w(r, "readwrite", (t=>g(t.delete(e))))
+    }, clearTakesHistory:async function() {
+      await w(r, "readwrite", (e=>g(e.clear())))
+    }, saveRoomProfile:async function(e) {
+      const t= {
+        id:i, sampleRate:e.sampleRate||48e3, fftSize:e.fftSize||2048, noiseFloorDb:"number"==typeof e.noiseFloorDb?e.noiseFloorDb:-60, durationSec:e.durationSec||2, spectrum:f(e.spectrum), capturedAt:e.capturedAt||(new Date).toISOString()
+      }; return await w(o, "readwrite", (e=>g(e.put(t)))),  {
+        ...t, spectrum:m(t.spectrum)
+      }
+    }, getRoomProfile:async function() {
+      const e=await w(o, "readonly", (e=>g(e.get(i)))); return e? {
+        ...e, spectrum:m(e.spectrum)
+      }
+      :null
+    }, clearRoomProfile:async function() {
+      await w(o, "readwrite", (e=>g(e.delete(i))))
+    }, getPrefs:P, setPref:function(e, t) {
+      return b({
+        [e]:t
+      })
+    }, setPrefs:b, resetPrefs:function() {
+      if ("undefined"!=typeof localStorage) try {
+        localStorage.removeItem(s)
+      } catch (e) {
+
+      }
+      return M(u.theme),  {
+        ...u
+      }
+    }, applyTheme:M, onPrefsChange:function(e) {
+      if ("undefined"==typeof window||"function"!=typeof e) return ()=> {
+
+      }; const t=t=> {
+        t.key===s&&e(P())
+      }; return window.addEventListener("storage", t), ()=>window.removeEventListener("storage", t)
+    }
+  }
+}));

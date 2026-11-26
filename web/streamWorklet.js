@@ -1,0 +1,60 @@
+class BnfmStreamProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return []
+  }
+  constructor(t) {
+    super();
+    const s=t&&t.processorOptions|| {
+
+    };
+    this.hopSize=s.hopSize||480, this.jitterHops=s.jitterHops||3, this.jitterTarget=this.hopSize*this.jitterHops, this.inAccum=new Float32Array(this.hopSize), this.inFill=0, this.ringCapacity=Math.max(64*this.hopSize, 2*this.jitterTarget), this.outRing=new Float32Array(this.ringCapacity), this.ringRead=0, this.ringWrite=0, this.ringCount=0, this.primed=false, this.dryRing=new Float32Array(this.ringCapacity), this.dryWrite=0, this.bypass=Boolean(s.bypass||false), this.bypassMix=this.bypass?1:0, this.bypassStep=1/64, this.dryWet="number"==typeof s.dryWet?s.dryWet:1, this.underruns=0, this.seq=0, this.statsCounter=0, this.inSumSq=0, this.outSumSq=0, this.meterSamples=0, this.port.onmessage=t=>this._handleMessage(t.data)
+  }
+  _handleMessage(t) {
+    if (t&&"object"==typeof t) if ("enhanced"===t.type&&t.pcm) {
+      const s=t.pcm instanceof Float32Array?t.pcm:new Float32Array(t.pcm);
+      this._pushEnhanced(s)
+    } else {
+      if ("config"===t.type) return "boolean"==typeof t.bypass&&(this.bypass=t.bypass), "number"==typeof t.dryWet&&(this.dryWet=Math.max(0, Math.min(1, t.dryWet))), void("number"==typeof t.jitterHops&&t.jitterHops>=1&&t.jitterHops<=32&&(this.jitterHops=Math.round(t.jitterHops), this.jitterTarget=this.hopSize*this.jitterHops));
+      "reset"===t.type&&(this.inFill=0, this.ringRead=0, this.ringWrite=0, this.ringCount=0, this.primed=false, this.underruns=0, this.outRing.fill(0), this.dryRing.fill(0))
+    }
+  }
+  _pushEnhanced(t) {
+    const s=this.ringCapacity;
+    for (let i=0; i<t.length; i++) this.ringCount>=s&&(this.ringRead=(this.ringRead+1)%s, this.ringCount--), this.outRing[this.ringWrite]=t[i], this.ringWrite=(this.ringWrite+1)%s, this.ringCount++;
+    !this.primed&&this.ringCount>=this.jitterTarget&&(this.primed=true)
+  }
+  process(t, s) {
+    const i=t[0], e=s[0];
+    if (!e||0===e.length) return true;
+    const r=e[0], h=i&&i.length>0?i[0]:null, n=r.length, a=this.ringCapacity;
+    for (let t=0; t<n; t++) {
+      const s=h?h[t]:0;
+      if (this.inSumSq+=s*s, this.dryRing[this.dryWrite]=s, this.dryWrite=(this.dryWrite+1)%a, this.inAccum[this.inFill++]=s, this.inFill>=this.hopSize) {
+        const t=new Float32Array(this.inAccum);
+        this.port.postMessage({
+          type:"frame", pcm:t, seq:this.seq++, sampleRate:sampleRate
+        }, [t.buffer]), this.inFill=0
+      }
+    }
+    const o=this.bypass?1:0;
+    let p=false;
+    for (let t=0; t<n; t++) {
+      this.bypassMix<o?this.bypassMix=Math.min(o, this.bypassMix+this.bypassStep):this.bypassMix>o&&(this.bypassMix=Math.max(o, this.bypassMix-this.bypassStep));
+      const s=h?h[t]:0, i=(this.dryWrite-n+t-this.jitterTarget+2*a)%a, e=this.dryRing[i];
+      let u=0;
+      this.primed&&this.ringCount>0?(u=this.outRing[this.ringRead], this.ringRead=(this.ringRead+1)%a, this.ringCount--):this.primed&&!this.bypass&&(p=true, u=0);
+      const m=(u*this.dryWet+e*(1-this.dryWet))*(1-this.bypassMix)+s*this.bypassMix;
+      r[t]=m, this.outSumSq+=m*m
+    }
+    p&&(this.underruns++, this.primed=false);
+    for (let t=1; t<e.length; t++) e[t].set(r);
+    if (this.meterSamples+=n, this.statsCounter++, this.statsCounter>=38) {
+      const t=Math.sqrt(this.inSumSq/Math.max(1, this.meterSamples)), s=Math.sqrt(this.outSumSq/Math.max(1, this.meterSamples));
+      this.port.postMessage({
+        type:"stats", underruns:this.underruns, bufferedSamples:this.ringCount, jitterTargetSamples:this.jitterTarget, primed:this.primed, bypass:this.bypass, dryWet:this.dryWet, inputRmsDb:Number((20*Math.log10(t+1e-9)).toFixed(2)), outputRmsDb:Number((20*Math.log10(s+1e-9)).toFixed(2))
+      }), this.statsCounter=0, this.inSumSq=0, this.outSumSq=0, this.meterSamples=0
+    }
+    return true
+  }
+}
+registerProcessor("bnfm-stream-processor", BnfmStreamProcessor);

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browser Noise Free Mic — Processing</title>
+  <meta name="theme-color" content="#0A0A0A" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script>
+    (function () {
+      const saved = localStorage.getItem('bnfm_theme');
+      if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js" defer></script>
+  <script src="./appStore.js" defer></script>
+  <script src="./uiCommon.js" defer></script>
+  <script src="./audioCodec.js" defer></script>
+  <script src="./masteringChain.js" defer></script>
+  <script src="./audioEngine.js" defer></script>
+  
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="input.html" class="brand" aria-label="Browser Noise Free Mic Home">
+        <span>Browser Noise Free Mic</span>
+        <span class="brand-dot" aria-hidden="true"></span>
+      </a>
+
+      <div class="topbar-controls">
+        <span id="gpu-indicator" class="mono" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);display:inline-flex;align-items:center;gap:6px;"><span id="gpu-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text-muted);display:inline-block;"></span><span id="gpu-indicator-text">Checking GPU...</span></span>
+        <button id="btn-theme" class="theme-toggle" type="button" aria-label="Toggle Light and Dark Theme">
+          <span class="theme-swatch" aria-hidden="true"></span>
+          <span id="theme-label">Light</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="processing-shell">
+    <!-- FILE / RECORD MODE: 4-Slide Horizontal Progress Sequence -->
+    <section id="panel-file-processing" class="processing-frame hidden" aria-live="polite">
+      <div class="processing-top">
+        <span id="pipeline-eyebrow" class="eyebrow">48 kHz Neural Speech Pipeline</span>
+        <span id="step-counter" class="step-counter">01 / 04</span>
+      </div>
+
+      <div class="slides-viewport">
+        <div id="slides-track" class="slides-track">
+          <div class="slide-panel">
+            <span class="slide-code">Stage 01</span>
+            <h1 class="slide-heading">Decoding &amp; 48 kHz Full-Band Prep</h1>
+            <p class="slide-detail">Normalizing raw PCM buffer and aligning full-band 24 kHz Nyquist frames.</p>
+          </div>
+
+          <div class="slide-panel">
+            <span class="slide-code">Stage 02</span>
+            <h1 class="slide-heading">Spectral &amp; ERB Decomposition</h1>
+            <p class="slide-detail">Extracting 32-band Equivalent Rectangular Bandwidth features and complex DF frames.</p>
+          </div>
+
+          <div class="slide-panel">
+            <span class="slide-code">Stage 03</span>
+            <h1 class="slide-heading">Neural Noise &amp; Reverb Elimination</h1>
+            <p class="slide-detail">Suppressing 50 Hz mains hum, ceiling fan rumble, and room reflections.</p>
+          </div>
+
+          <div class="slide-panel">
+            <span class="slide-code">Stage 04</span>
+            <h1 class="slide-heading">Studio Voice Mastering &amp; Phase Lock</h1>
+            <p class="slide-detail">Locking harmonic phase, vocal presence, and -16 LUFS broadcast loudness.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-dots" aria-hidden="true">
+        <div class="step-pill is-active" data-step="0"></div>
+        <div class="step-pill" data-step="1"></div>
+        <div class="step-pill" data-step="2"></div>
+        <div class="step-pill" data-step="3"></div>
+      </div>
+
+      <div class="progress-rail">
+        <div id="progress-fill" class="progress-fill"></div>
+      </div>
+
+      <div class="processing-footer">
+        <span id="status-take-name">Loading take...</span>
+        <span id="status-engine-state">Engine Running</span>
+      </div>
+    </section>
+
+    <!-- CONTINUOUS LIVE MIC MODE: Zero-Delay Instant Handshake -->
+    <section id="panel-continuous-handshake" class="processing-frame hidden" aria-live="polite">
+      <div class="processing-top">
+        <span class="eyebrow">Live Virtual Mic Handshake</span>
+        <span class="step-counter">0 MS DELAY</span>
+      </div>
+
+      <div class="handshake-box">
+        <h1 class="slide-heading">Acquiring Microphone &amp; 48 kHz Engine...</h1>
+        <p id="handshake-detail" class="slide-detail">Requesting raw audio input and initializing AudioWorklet pipeline.</p>
+        <div class="handshake-bar" aria-hidden="true"></div>
+      </div>
+
+      <div id="handshake-error" class="notice-strip hidden">
+        <strong>Microphone permission required.</strong> Grant access and retry, or return to Capture.
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button id="btn-retry-mic" class="btn btn-sm btn-accent" type="button">Retry Mic Handshake</button>
+          <a href="input.html" class="btn btn-sm">Back to Input</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    const loadModule = async (path) => {
+      try { return await import(path); } catch { return null; }
+    };
+    const [storeMod, engineMod] = await Promise.all([
+      loadModule('./appStore.js'),
+      loadModule('./audioEngine.js?v=2.2')
+    ]);
+    const externalStore = window.BNFMStore || storeMod?.default || storeMod?.appStore || null;
+    const externalEngine = window.BNFMAudioEngine || engineMod?.default || engineMod?.audioEngine || window.AudioEngine || null;
+
+    // Theme toggle
+    const btnTheme = document.getElementById('btn-theme');
+    const themeLabel = document.getElementById('theme-label');
+    const syncThemeUI = () => {
+      themeLabel.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Dark' : 'Light';
+    };
+    syncThemeUI();
+    btnTheme.addEventListener('click', () => {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      if (isDark) {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('bnfm_theme', 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('bnfm_theme', 'dark');
+      }
+      syncThemeUI();
+    });
+
+    // Local BNFM_DB helpers
+    const DB_NAME = 'BNFM_DB';
+    const STORE_TAKES = 'takes';
+    const STORE_STATE = 'session';
+
+    const openLocalDB = () => window.BNFMUI.openLocalDB();
+
+    const loadActiveTake = (explicitId) => window.BNFMUI.loadActiveTake(explicitId, externalStore);
+
+    const saveEnhancedTake = (take) => window.BNFMUI.saveTake(take, externalStore);
+
+
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode') === 'continuous' ? 'continuous' : 'file';
+    const takeIdParam = params.get('take');
+
+    // ==================================================================
+    // CONTINUOUS MODE — ZERO ARTIFICIAL DELAY (0 ms added sleep!)
+    // ==================================================================
+    if (mode === 'continuous') {
+      const panel = document.getElementById('panel-continuous-handshake');
+      const detail = document.getElementById('handshake-detail');
+      const errBox = document.getElementById('handshake-error');
+      const btnRetry = document.getElementById('btn-retry-mic');
+      panel.classList.remove('hidden');
+
+      async function runInstantHandshake() {
+        errBox.classList.add('hidden');
+        detail.textContent = 'Requesting raw 48 kHz microphone permission...';
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              sampleRate: 48000
+            }
+          });
+          // Release stream immediately after permission & device warmup before navigation
+          stream.getTracks().forEach((t) => t.stop());
+
+          detail.textContent = 'Warming up 48 kHz neural worklet...';
+          if (externalEngine && typeof externalEngine.warmupContinuous === 'function') {
+            await externalEngine.warmupContinuous();
+          } else if (externalEngine && typeof externalEngine.init === 'function') {
+            await externalEngine.init({ mode: 'continuous', sampleRate: 48000 });
+          }
+
+          sessionStorage.setItem('bnfm_mic_ready', '1');
+          // Immediate navigation — 0 ms artificial sleep
+          window.location.replace('output.html?mode=continuous');
+        } catch {
+          detail.textContent = 'Handshake paused awaiting microphone permission.';
+          errBox.classList.remove('hidden');
+        }
+      }
+
+      btnRetry.addEventListener('click', runInstantHandshake);
+      runInstantHandshake();
+    } else {
+      // ================================================================
+      // FILE / RECORD MODE — 4-Slide Horizontal Choreography (min ~2.2 s)
+      // ================================================================
+      const panel = document.getElementById('panel-file-processing');
+      const track = document.getElementById('slides-track');
+      const stepCounter = document.getElementById('step-counter');
+      const progressFill = document.getElementById('progress-fill');
+      const stepPills = Array.from(document.querySelectorAll('.step-pill'));
+      const takeNameEl = document.getElementById('status-take-name');
+      const engineStateEl = document.getElementById('status-engine-state');
+      panel.classList.remove('hidden');
+
+      function setSlide(index) {
+        track.style.transform = `translateX(-${index * 25}%)`;
+        stepCounter.textContent = `0${index + 1} / 04`;
+        progressFill.style.width = `${(index + 1) * 25}%`;
+        stepPills.forEach((p, idx) => {
+          p.classList.toggle('is-done', idx < index);
+          p.classList.toggle('is-active', idx === index);
+        });
+      }
+
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      async function runChoreography() {
+        // 4 slides x 550 ms = 2.2 s minimum choreography
+        setSlide(0);
+        await sleep(550);
+        setSlide(1);
+        await sleep(550);
+        setSlide(2);
+        await sleep(550);
+        setSlide(3);
+        await sleep(550);
+      }
+
+      async function runEnhancement() {
+        const take = await loadActiveTake(takeIdParam);
+        if (!take || !take.noisyPcm) {
+          window.location.replace('input.html');
+          return null;
+        }
+        takeNameEl.textContent = take.name || 'Active Take';
+
+        const eng = window.BNFMAudioEngine || externalEngine;
+        if (!eng || typeof eng.enhanceBuffer !== 'function') {
+          engineStateEl.textContent = 'Error: Neural audioEngine.js failed to load.';
+          throw new Error('Neural audioEngine.js failed to load.');
+        }
+
+        const selectedEngine = localStorage.getItem('bnfm_engine') || 'gtcrn48k';
+        engineStateEl.textContent = `Running ${selectedEngine === 'gtcrn' || selectedEngine === 'gtcrn48k' ? 'GTCRN-DF 48 kHz' : 'DeepFilterNet3 48 kHz'} ONNX...`;
+
+        let result = null;
+        try {
+          result = await eng.enhanceBuffer(take.noisyPcm, {
+            sampleRate: take.sampleRate || 48000,
+            engine: selectedEngine
+          });
+        } catch (err) {
+          const msg = err && err.message ? err.message : String(err);
+          engineStateEl.textContent = `ONNX Error: ${msg}`;
+          const errBanner = document.createElement('div');
+          errBanner.style.cssText = 'margin-top:16px;padding:12px 16px;border:1px solid #FF5A00;border-radius:8px;font-size:13px;';
+          errBanner.textContent = `Neural ONNX inference failed (no fake fallback): ${msg}. Verify ./models/ files exist on your deployment.`;
+          const backBtn = document.createElement('a');
+          backBtn.href = 'input.html';
+          backBtn.className = 'btn btn-sm';
+          backBtn.style.marginLeft = '12px';
+          backBtn.textContent = 'Back to Input';
+          errBanner.appendChild(backBtn);
+          panel.appendChild(errBanner);
+          return null;
+        }
+
+        take.enhancedPcm = result.enhancedPcm;
+        take.telemetry = result.telemetry || take.telemetry;
+        await saveEnhancedTake(take);
+        engineStateEl.textContent = `${take.telemetry?.engineLabel || 'ONNX'} · ${take.telemetry?.latencyMs ?? '--'} ms`;
+        return take;
+      }
+
+      const [take] = await Promise.all([runEnhancement(), runChoreography()]);
+      if (take) {
+        window.location.replace(`output.html?mode=file&take=${encodeURIComponent(take.id)}`);
+      }
+    }
+  
+    // Live GPU / CPU Hardware Indicator (via uiCommon.js)
+    window.BNFMUI.updateGpuPill(document.getElementById("gpu-indicator-text"), document.getElementById("gpu-dot"));
+
+  </script>
+  <footer class="bnfm-author-footer" style="text-align:center;padding:18px 16px 26px;font-size:12px;opacity:0.72;letter-spacing:0.01em;">Built by <strong>Priyanshu Aggarwal</strong> &middot; <a href="https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">Browser Noise Free Mic</a></footer>
+</body>
+</html>
