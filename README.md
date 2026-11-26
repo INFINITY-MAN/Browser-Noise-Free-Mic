@@ -5,9 +5,9 @@
 **Real-time, privacy-first 48 kHz AI noise cancellation that runs 100% locally in your browser.**  
 *Kill ceiling fans, 50 Hz electrical hum, traffic, and keyboard noise on Zoom, Google Meet, Discord, and OBS — with zero subscriptions and zero cloud uploads.*
 
-[![Live App](https://img.shields.io/badge/Live%20App-Try%20in%20Browser-FF5A00?style=flat-square&logo=vercel)](https://browser-noise-free-mic-web.vercel.app/input.html)
+[![Live App](https://img.shields.io/badge/Live_App-Try_in_Browser-FF5A00?style=flat-square)](https://browser-noise-free-mic-web.vercel.app/input.html)
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FINFINITY-MAN%2FBrowser-Noise-Free-Mic&root-directory=web)
-[![Releases](https://img.shields.io/github/v/release/INFINITY-MAN/Browser-Noise-Free-Mic?style=flat-square&color=FF5A00)](https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic/releases)
+[![Releases](https://img.shields.io/badge/Releases-v3.0.0-FF5A00?style=flat-square)](https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic/releases)
 [![WebGPU / WASM](https://img.shields.io/badge/Engine-WebGPU%20%2F%20WASM%2048kHz-0A0A0A?style=flat-square)](https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic)
 [![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local%20In--Browser-FF5A00?style=flat-square)](https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic)
 
@@ -25,7 +25,7 @@
 
 ## ✨ Why Browser Noise Free Mic?
 
-Most noise-cancellation tools require heavy desktop installs, paid monthly subscriptions, or send your voice to remote servers. **Browser Noise Free Mic** runs a strictly causal neural speech enhancement pipeline directly on your GPU/CPU inside Chrome or Edge using **WebGPU / WASM** and **AudioWorklet** — no account, no cloud, no lag.
+Most noise-cancellation tools require heavy desktop installs, paid monthly subscriptions, or send your voice to remote servers. **Browser Noise Free Mic** runs a strictly causal neural speech enhancement pipeline directly on your GPU/CPU inside Chrome or Edge using **WebGPU / WASM** and **AudioWorklet** — no account, no cloud, and zero backend servers.
 
 ---
 
@@ -33,13 +33,27 @@ Most noise-cancellation tools require heavy desktop installs, paid monthly subsc
 
 | Feature | What It Does |
 | :--- | :--- |
-| 🎧 **Live Virtual Mic (Continuous Mode)** | Real-time microphone denoising with **AudioWorklet** + `setSinkId` routing straight into **VB-Audio Virtual Cable** for Zoom, Meet, Discord, and OBS. |
+| 🎧 **Live Virtual Mic (Continuous Mode)** | Live microphone neural denoising using **AudioWorklet** (`streamWorklet.js`) + chunked overlap-add ONNX inference (WebGPU GPU / WASM CPU) + `setSinkId` routing into **VB-Audio Virtual Cable** for Zoom, Meet, Discord, and OBS. |
 | 🛡️ **Built-in Echo Guard** | Automatically detects whether you're routing to a Virtual Cable or regular headphones/speakers — mutes self-monitoring on headphones by default so you never hear annoying voice echo, with a 1-click toggle when you want to test your voice. |
 | ⚡ **1-Click Virtual Cable Installer** | Built-in Windows `.bat` & PowerShell installer right inside Continuous Mode that fetches and installs the official VB-Audio Virtual Cable driver, plus a **Refresh Devices** button. |
 | 🎛️ **4 Studio Mastering Presets** | Instant one-click presets: **Podcast Studio Cut**, **Natural Voice**, **Heavy Fan / Traffic**, and **Raw Neural**, plus **Trim Silence** and **2s Room Snapshot** noise-floor lock. |
-| 🎙️ **Record & File Studio** | Record directly from your mic or drop `.wav`, `.mp3`, `.m4a`, `.aac`, or `.ogg` files, compare **Original vs. Studio Cut** (`Hold O`), and export lossless **48 kHz WAV** (or **AAC 160k `.m4a`** with optional backend). |
+| 🎙️ **Record & File Studio** | Record directly from your mic or drop `.wav`, `.mp3`, `.m4a`, `.aac`, or `.ogg` files, compare **Original vs. Studio Cut** (`Hold O`), and export lossless **48 kHz WAV** (plus native browser MediaRecorder capture where supported). |
 | 📊 **Stats for Nerds Drawer** | Collapsible telemetry drawer (`N`) with dual 20 kHz spectrograms, live hardware acceleration badge (WebGPU/WASM), latency, RTF, SNR gain, Dry/Wet blend, and engine selector. |
 | 🌓 **Clean Studio UI & Installable PWA** | Crisp 3-color light/dark interface (zero bloat) that installs as a standalone desktop app from Chrome or Edge. |
+
+---
+
+## ⚠️ Current Limitations & Technical Reality
+
+Being transparent about how v3.0.0 works in the browser:
+
+- **Live Mic Mode Latency (~160–250 ms):** Both exported 48 kHz neural models (`DeepFilterNet3` and custom `GTCRN-DF 48 kHz`) accept STFT spectrogram chunks (`[1, T, 481, 2]`) rather than exposed frame-by-frame GRU recurrent state ports. Live Continuous Mode therefore runs **chunked overlap-add ONNX inference** (160 ms windows / 80 ms stride). This works reliably for Zoom, Google Meet, Discord, and OBS calls, but is **not** sub-20 ms studio monitoring.
+- **GPU (WebGPU) vs. CPU (WASM SIMD):** FP32 ONNX models run on your GPU via **WebGPU** in modern desktop Chrome and Edge. On browsers or GPUs without WebGPU support, `onnxruntime-web` automatically runs the exact same ONNX models on your CPU via **WASM SIMD** (higher CPU usage and latency).
+- **First-Load Model Download:** DeepFilterNet3 (`web/models/df3/*.onnx`) is ~8.6 MB and custom GTCRN-DF 48 kHz (`web/models/gtcrn48k_fp32.onnx`) is ~2.7 MB. Models are fetched once from your deployment and cached locally by the Service Worker.
+- **No Silent Fake Fallbacks:** If `.onnx` model files fail to load, v3 displays an explicit error banner instead of silently substituting a classical Wiener filter or hardcoded telemetry numbers.
+- **100% Browser-Only (No Server Backend):** The unused FastAPI backend from v2 was removed in v3. File exports are lossless **48 kHz WAV** (and browser-native MediaRecorder formats where supported).
+- **Desktop Browser Requirement for Virtual Mic:** Routing live output to VB-Audio Virtual Cable (Windows) or BlackHole (macOS) requires desktop Chrome or Edge with `HTMLMediaElement.setSinkId()` support.
+
 
 ---
 
@@ -154,11 +168,3 @@ Browser-Noise-Free-Mic/
 ## ⭐ Support & Feedback
 
 If **Browser Noise Free Mic** saved your calls from fan or background noise, drop a **⭐ Star** on the repo or open an [Issue](https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic/issues) with ideas for `v2.1`!
-
----
-
-<div align="center">
-
-Built by **Priyanshu Aggarwal** ([INFINITY-MAN](https://github.com/INFINITY-MAN)) · **Browser Noise Free Mic**
-
-</div>

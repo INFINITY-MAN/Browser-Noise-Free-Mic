@@ -42,6 +42,9 @@
       if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
+  <script src="./uiCommon.js" defer></script>
+  <script src="./audioCodec.js" defer></script>
+  <script src="./audioEngine.js" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -167,11 +170,6 @@
       </section>
     </div>
   </main>
-  <footer style="max-width:960px;margin:32px auto 16px;padding:14px 20px;border-top:1px solid var(--border,#e5e5e5);display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--text-muted,#525252);">
-    <span>Built by <strong>Priyanshu Aggarwal</strong> &middot; Browser Noise Free Mic</span>
-    <a href="https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">GitHub</a>
-  </footer>
-
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
@@ -201,70 +199,11 @@
     const STORE_TAKES = 'takes';
     const STORE_STATE = 'session';
 
-    function openLocalDB() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains(STORE_TAKES)) {
-            db.createObjectStore(STORE_TAKES, { keyPath: 'id' });
-          }
-          if (!db.objectStoreNames.contains(STORE_STATE)) {
-            db.createObjectStore(STORE_STATE, { keyPath: 'key' });
-          }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    }
+    const openLocalDB = () => window.BNFMUI.openLocalDB();
 
-    async function saveTakeToDB(take) {
-      if (externalStore && typeof externalStore.saveTake === 'function') {
-        try {
-          const res = await externalStore.saveTake(take);
-          if (res) return res;
-        } catch {}
-      }
-      const db = await openLocalDB();
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction([STORE_TAKES, STORE_STATE], 'readwrite');
-        tx.objectStore(STORE_TAKES).put(take);
-        tx.objectStore(STORE_STATE).put({ key: 'activeTakeId', value: take.id });
-        tx.objectStore(STORE_STATE).put({ key: 'mode', value: 'file' });
-        tx.oncomplete = resolve;
-        tx.onerror = () => reject(tx.error);
-      });
-      // Trim to most recent 5 takes
-      const all = await getRecentTakesFromDB();
-      if (all.length > 5) {
-        const tx = db.transaction(STORE_TAKES, 'readwrite');
-        all.slice(5).forEach((old) => tx.objectStore(STORE_TAKES).delete(old.id));
-      }
-      return take.id;
-    }
+    const saveTakeToDB = (take) => window.BNFMUI.saveTake(take, externalStore);
 
-    async function getRecentTakesFromDB() {
-      if (externalStore && typeof externalStore.getRecentTakes === 'function') {
-        try {
-          const items = await externalStore.getRecentTakes(5);
-          if (Array.isArray(items)) return items.slice(0, 5);
-        } catch {}
-      }
-      try {
-        const db = await openLocalDB();
-        return await new Promise((resolve) => {
-          const tx = db.transaction(STORE_TAKES, 'readonly');
-          const req = tx.objectStore(STORE_TAKES).getAll();
-          req.onsuccess = () => {
-            const list = (req.result || []).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            resolve(list.slice(0, 5));
-          };
-          req.onerror = () => resolve([]);
-        });
-      } catch {
-        return [];
-      }
-    }
+    const getRecentTakesFromDB = () => window.BNFMUI.getRecentTakes(5, externalStore);
 
     async function setSessionMode(mode) {
       sessionStorage.setItem('bnfm_mode', mode);
@@ -292,17 +231,9 @@
     const toastEl = document.getElementById('toast');
 
     let toastTimer = null;
-    function showToast(msg) {
-      toastEl.textContent = msg;
-      toastEl.classList.add('is-visible');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => toastEl.classList.remove('is-visible'), 2600);
-    }
+    const showToast = (msg) => window.BNFMUI.showToast(toastEl, msg);
 
-    function syncThemeUI() {
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-      themeLabel.textContent = isDark ? 'Dark' : 'Light';
-    }
+    const syncThemeUI = () => window.BNFMUI.syncThemeUI(document.documentElement.getAttribute("data-theme") || "light", themeBtn);
     syncThemeUI();
 
     btnTheme.addEventListener('click', () => {
@@ -647,10 +578,7 @@
     const recentList = document.getElementById('recent-takes-list');
     const recentCount = document.getElementById('recent-count');
 
-    function formatDur(sec) {
-      const s = Math.max(0, Math.round(sec || 0));
-      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-    }
+    const formatDur = (sec) => window.BNFMUI.formatDur(sec);
 
     async function renderRecentTakes() {
       const takes = await getRecentTakesFromDB();
@@ -660,7 +588,8 @@
       }
       recentSection.classList.remove('hidden');
       recentCount.textContent = `${takes.length} / 5`;
-      recentList.innerHTML = '';
+      if (window.BNFMUI) window.BNFMUI.clearElement(recentList);
+      else while (recentList.firstChild) recentList.removeChild(recentList.firstChild);
 
       takes.forEach((take) => {
         const btn = document.createElement('button');
@@ -668,14 +597,19 @@
         btn.className = 'recent-item';
         const d = new Date(take.createdAt || Date.now());
         const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        btn.innerHTML = `
-          <span class="recent-name"></span>
-          <span class="recent-meta">
-            <span>${formatDur(take.duration)} · 48 kHz</span>
-            <span>${timeStr}</span>
-          </span>
-        `;
-        btn.querySelector('.recent-name').textContent = take.name || 'Untitled Take';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'recent-name';
+        nameSpan.textContent = take.name || 'Untitled Take';
+        const metaSpan = document.createElement('span');
+        metaSpan.className = 'recent-meta';
+        const durSpan = document.createElement('span');
+        durSpan.textContent = `${formatDur(take.duration)} · 48 kHz`;
+        const tsSpan = document.createElement('span');
+        tsSpan.textContent = timeStr;
+        metaSpan.appendChild(durSpan);
+        metaSpan.appendChild(tsSpan);
+        btn.appendChild(nameSpan);
+        btn.appendChild(metaSpan);
         btn.addEventListener('click', () => {
           const target = take.enhancedPcm ? 'output.html' : 'processing.html';
           window.location.href = `${target}?mode=file&take=${encodeURIComponent(take.id)}`;
@@ -686,5 +620,6 @@
 
     renderRecentTakes();
   </script>
+  <footer class="bnfm-author-footer" style="text-align:center;padding:18px 16px 26px;font-size:12px;opacity:0.72;letter-spacing:0.01em;">Built by <strong>Priyanshu Aggarwal</strong> &middot; <a href="https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">Browser Noise Free Mic v3</a></footer>
 </body>
 </html>

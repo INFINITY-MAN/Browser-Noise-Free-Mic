@@ -1,12 +1,3 @@
-backend/
-training/
-model/
-eval/
-scripts/
-tests/
+Project/
 checkpoints/
-exports/
-monitoring/
-requirements.txt
-pyproject.toml
 *.ipynb

@@ -14,7 +14,11 @@
       if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
-  <script src="./ort/ort.webgpu.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js" defer></script>
+  <script src="./uiCommon.js" defer></script>
+  <script src="./audioCodec.js" defer></script>
+  <script src="./masteringChain.js" defer></script>
+  <script src="./audioEngine.js" defer></script>
   <script src="./masteringChain.js" defer></script>
 </head>
 <body>
@@ -111,11 +115,6 @@
       </div>
     </section>
   </main>
-  <footer style="max-width:960px;margin:32px auto 16px;padding:14px 20px;border-top:1px solid var(--border,#e5e5e5);display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--text-muted,#525252);">
-    <span>Built by <strong>Priyanshu Aggarwal</strong> &middot; Browser Noise Free Mic</span>
-    <a href="https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">GitHub</a>
-  </footer>
-
 
   <script type="module">
     const loadModule = async (path) => {
@@ -152,112 +151,12 @@
     const STORE_TAKES = 'takes';
     const STORE_STATE = 'session';
 
-    function openLocalDB() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains(STORE_TAKES)) db.createObjectStore(STORE_TAKES, { keyPath: 'id' });
-          if (!db.objectStoreNames.contains(STORE_STATE)) db.createObjectStore(STORE_STATE, { keyPath: 'key' });
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    }
+    const openLocalDB = () => window.BNFMUI.openLocalDB();
 
-    async function loadActiveTake(explicitId) {
-      if (externalStore && typeof externalStore.getTake === 'function' && explicitId) {
-        try {
-          const t = await externalStore.getTake(explicitId);
-          if (t) return t;
-        } catch {}
-      }
-      const db = await openLocalDB();
-      let takeId = explicitId;
-      if (!takeId) {
-        takeId = await new Promise((resolve) => {
-          const tx = db.transaction(STORE_STATE, 'readonly');
-          const req = tx.objectStore(STORE_STATE).get('activeTakeId');
-          req.onsuccess = () => resolve(req.result?.value || null);
-          req.onerror = () => resolve(null);
-        });
-      }
-      if (!takeId) return null;
-      return await new Promise((resolve) => {
-        const tx = db.transaction(STORE_TAKES, 'readonly');
-        const req = tx.objectStore(STORE_TAKES).get(takeId);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => resolve(null);
-      });
-    }
+    const loadActiveTake = (explicitId) => window.BNFMUI.loadActiveTake(explicitId, externalStore);
 
-    async function saveEnhancedTake(take) {
-      if (externalStore && typeof externalStore.saveTake === 'function') {
-        try { await externalStore.saveTake(take); } catch {}
-      }
-      const db = await openLocalDB();
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction([STORE_TAKES, STORE_STATE], 'readwrite');
-        tx.objectStore(STORE_TAKES).put(take);
-        tx.objectStore(STORE_STATE).put({ key: 'activeTakeId', value: take.id });
-        tx.oncomplete = resolve;
-        tx.onerror = () => reject(tx.error);
-      });
-    }
+    const saveEnhancedTake = (take) => window.BNFMUI.saveTake(take, externalStore);
 
-    // Built-in fallback 48 kHz spectral/notch + studio vocal polish if audioEngine.js is not present
-    function fallbackEnhance48k(noisyPcm, sampleRate = 48000) {
-      const t0 = performance.now();
-      const n = noisyPcm.length;
-      const out = new Float32Array(n);
-
-      // High-pass @ 80 Hz + 50 Hz hum notch + soft speech gate
-      const rcHp = 1 / (2 * Math.PI * 80);
-      const dt = 1 / sampleRate;
-      const alphaHp = rcHp / (rcHp + dt);
-
-      // Biquad notch at 50 Hz (Q = 8)
-      const w0 = (2 * Math.PI * 50) / sampleRate;
-      const alphaN = Math.sin(w0) / (2 * 8);
-      const b0 = 1 / (1 + alphaN);
-      const b1 = (-2 * Math.cos(w0)) * b0;
-      const b2 = b0;
-      const a1 = b1;
-      const a2 = (1 - alphaN) * b0;
-
-      let prevIn = 0, prevHp = 0;
-      let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-      let env = 0;
-
-      for (let i = 0; i < n; i++) {
-        const x = noisyPcm[i];
-        const hp = alphaHp * (prevHp + x - prevIn);
-        prevIn = x;
-        prevHp = hp;
-
-        const y = b0 * hp + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-        x2 = x1; x1 = hp; y2 = y1; y1 = y;
-
-        const absY = Math.abs(y);
-        env = absY > env ? env * 0.96 + absY * 0.04 : env * 0.9985 + absY * 0.0015;
-        const gate = Math.min(1, Math.max(0.06, (env - 0.018) / 0.045));
-        out[i] = Math.tanh(y * gate * 1.18);
-      }
-
-      const elapsedMs = Math.max(1, performance.now() - t0);
-      const durMs = (n / sampleRate) * 1000;
-      return {
-        enhancedPcm: out,
-        telemetry: {
-          hardware: navigator.gpu ? 'WebGPU / 48 kHz DSP' : 'WASM SIMD / 48 kHz',
-          engine: 'DeepFilterNet3 48 kHz',
-          latencyMs: Number(elapsedMs.toFixed(1)),
-          rtf: Number((elapsedMs / Math.max(1, durMs)).toFixed(3)),
-          snrGainDb: 16.4,
-          memoryMb: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 42
-        }
-      };
-    }
 
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode') === 'continuous' ? 'continuous' : 'file';
@@ -351,28 +250,41 @@
         }
         takeNameEl.textContent = take.name || 'Active Take';
 
-        let result = null;
-        if (externalEngine && typeof externalEngine.enhanceBuffer === 'function') {
-          try {
-            result = await externalEngine.enhanceBuffer(take.noisyPcm, {
-              sampleRate: take.sampleRate || 48000,
-              engine: localStorage.getItem('bnfm_engine') || 'df3'
-            });
-          } catch {}
-        } else if (externalEngine && typeof externalEngine.processFile === 'function') {
-          try {
-            result = await externalEngine.processFile(take.noisyPcm, take.sampleRate || 48000);
-          } catch {}
+        const eng = window.BNFMAudioEngine || externalEngine;
+        if (!eng || typeof eng.enhanceBuffer !== 'function') {
+          engineStateEl.textContent = 'Error: Neural audioEngine.js failed to load.';
+          throw new Error('Neural audioEngine.js failed to load.');
         }
 
-        if (!result || !result.enhancedPcm) {
-          result = fallbackEnhance48k(take.noisyPcm, take.sampleRate || 48000);
+        const selectedEngine = localStorage.getItem('bnfm_engine') || 'df3';
+        engineStateEl.textContent = `Running ${selectedEngine === 'gtcrn' || selectedEngine === 'gtcrn48k' ? 'GTCRN-DF 48 kHz' : 'DeepFilterNet3 48 kHz'} ONNX...`;
+
+        let result = null;
+        try {
+          result = await eng.enhanceBuffer(take.noisyPcm, {
+            sampleRate: take.sampleRate || 48000,
+            engine: selectedEngine
+          });
+        } catch (err) {
+          const msg = err && err.message ? err.message : String(err);
+          engineStateEl.textContent = `ONNX Error: ${msg}`;
+          const errBanner = document.createElement('div');
+          errBanner.style.cssText = 'margin-top:16px;padding:12px 16px;border:1px solid #FF5A00;border-radius:8px;font-size:13px;';
+          errBanner.textContent = `Neural ONNX inference failed (no fake fallback): ${msg}. Verify ./models/ files exist on your deployment.`;
+          const backBtn = document.createElement('a');
+          backBtn.href = 'input.html';
+          backBtn.className = 'btn btn-sm';
+          backBtn.style.marginLeft = '12px';
+          backBtn.textContent = 'Back to Input';
+          errBanner.appendChild(backBtn);
+          panel.appendChild(errBanner);
+          return null;
         }
 
         take.enhancedPcm = result.enhancedPcm;
         take.telemetry = result.telemetry || take.telemetry;
         await saveEnhancedTake(take);
-        engineStateEl.textContent = `Ready (${take.telemetry?.latencyMs ?? '--'} ms)`;
+        engineStateEl.textContent = `${take.telemetry?.engineLabel || 'ONNX'} · ${take.telemetry?.latencyMs ?? '--'} ms`;
         return take;
       }
 
@@ -382,28 +294,10 @@
       }
     }
   
-    // Live GPU / CPU Hardware Indicator
-    (async function updateGpuPill() {
-      const txt = document.getElementById('gpu-indicator-text');
-      const dot = document.getElementById('gpu-dot');
-      if (!txt) return;
-      try {
-        if (navigator.gpu) {
-          const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-          if (adapter) {
-            const info = adapter.info || {};
-            const name = info.description || info.device || info.vendor || 'WebGPU GPU';
-            txt.textContent = 'GPU · ' + name;
-            if (dot) dot.style.background = '#FF5A00';
-            return;
-          }
-        }
-        txt.textContent = 'CPU · WASM SIMD';
-      } catch {
-        txt.textContent = 'CPU · WASM SIMD';
-      }
-    })();
+    // Live GPU / CPU Hardware Indicator (via uiCommon.js)
+    window.BNFMUI.updateGpuPill(document.getElementById("gpu-indicator-text"), document.getElementById("gpu-dot"));
 
   </script>
+  <footer class="bnfm-author-footer" style="text-align:center;padding:18px 16px 26px;font-size:12px;opacity:0.72;letter-spacing:0.01em;">Built by <strong>Priyanshu Aggarwal</strong> &middot; <a href="https://github.com/INFINITY-MAN/Browser-Noise-Free-Mic" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">Browser Noise Free Mic v3</a></footer>
 </body>
 </html>
